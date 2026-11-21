@@ -1,8 +1,10 @@
 import React from 'react';
 import { Award, Compass, ShieldCheck } from 'lucide-react';
 import { COMPANY_INFO } from '../../types';
+import { FastImage } from '../FastImage';
 
-const ENGINEER_PORTRAIT = '/src/assets/images/engineer_portrait_1795248991352.jpg';
+const ENGINEER_PORTRAIT_JPG = '/src/assets/images/engineer_portrait_1795248991352.jpg';
+const ENGINEER_PORTRAIT_WEBP = '/src/assets/images/engineer_portrait_1795248991352.webp';
 
 export const AboutSection: React.FC = () => {
   return (
@@ -12,10 +14,10 @@ export const AboutSection: React.FC = () => {
           {/* Engineer Portrait Column */}
           <div className="lg:col-span-5 flex flex-col">
             <div className="relative flex-1 min-h-[400px] rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
-              <img
-                src={ENGINEER_PORTRAIT}
+              <FastImage
+                src={ENGINEER_PORTRAIT_JPG}
+                webpSrc={ENGINEER_PORTRAIT_WEBP}
                 alt={`${COMPANY_INFO.engineerName} holding structural blueprints inside the fabrication bay`}
-                referrerPolicy="no-referrer"
                 className="w-full h-full object-cover object-top"
               />
               <div

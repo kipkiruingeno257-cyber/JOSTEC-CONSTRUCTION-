@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import type { ProjectCategory } from '../../types';
+import { FastImage } from '../FastImage';
 
 interface ServiceItem {
   number: string;
@@ -102,10 +103,11 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
         {/* Visual Showcase Strip (Asymmetric 3-photo feature) */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-12">
           <div className="md:col-span-6 relative rounded-lg overflow-hidden border border-slate-200 bg-[#0B1B2B] aspect-[4/3] md:aspect-auto md:h-72">
-            <img
+            <FastImage
               src="/src/assets/images/service_building_steel_1795248990930.jpg"
+              webpSrc="/src/assets/images/service_building_steel_1795248990930.webp"
               alt="Structural steel frame erection for commercial building construction"
-              referrerPolicy="no-referrer"
+              darkBg
               className="w-full h-full object-cover"
             />
             <div
@@ -121,10 +123,11 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
           </div>
 
           <div className="md:col-span-3 relative rounded-lg overflow-hidden border border-slate-200 bg-[#0B1B2B] aspect-[4/3] md:aspect-auto md:h-72">
-            <img
+            <FastImage
               src="/src/assets/images/workshop_fabrication_1795248991295.jpg"
+              webpSrc="/src/assets/images/workshop_fabrication_1795248991295.webp"
               alt="Precision welding of heavy structural steel I-beams in workshop"
-              referrerPolicy="no-referrer"
+              darkBg
               className="w-full h-full object-cover"
             />
             <div
@@ -138,10 +141,11 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
           </div>
 
           <div className="md:col-span-3 relative rounded-lg overflow-hidden border border-slate-200 bg-[#0B1B2B] aspect-[4/3] md:aspect-auto md:h-72">
-            <img
+            <FastImage
               src="/src/assets/images/about_perimeter_fencing_1795248991676.jpg"
+              webpSrc="/src/assets/images/about_perimeter_fencing_1795248991676.webp"
               alt="Custom perimeter steel fencing and automated swing gate entrance"
-              referrerPolicy="no-referrer"
+              darkBg
               className="w-full h-full object-cover"
             />
             <div

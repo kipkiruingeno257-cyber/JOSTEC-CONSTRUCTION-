@@ -50,7 +50,11 @@
         },
         "storagePaths": {
           "type": "array",
-          "description": "Corresponding Firebase Storage object paths for cleanup on deletion."
+          "description": "Corresponding storage paths (Firebase Storage, local server, or external) for cleanup on deletion."
+        },
+        "photoAppearance": {
+          "type": "object",
+          "description": "Optional dashboard-configured visual presentation settings (aspect ratio, fit, focal point, frame style, tone, and adjustments) for project photographs."
         },
         "status": {
           "type": "string",

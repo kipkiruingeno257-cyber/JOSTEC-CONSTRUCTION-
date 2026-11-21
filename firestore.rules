@@ -68,6 +68,21 @@ service cloud.firestore {
         (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 512));
     }
 
+    function isValidPhotoAppearance(app) {
+      return app is map &&
+        app.keys().hasAll(['aspectRatio', 'objectFit', 'focalPoint', 'frameStyle', 'tone', 'brightness', 'contrast', 'saturation', 'showBadge']) &&
+        app.keys().hasOnly(['aspectRatio', 'objectFit', 'focalPoint', 'frameStyle', 'tone', 'brightness', 'contrast', 'saturation', 'showBadge']) &&
+        app.aspectRatio in ['4/3', '16/9', '1/1', '3/4'] &&
+        app.objectFit in ['cover', 'contain'] &&
+        app.focalPoint in ['center', 'top', 'bottom', 'left', 'right'] &&
+        app.frameStyle in ['clean', 'elevated', 'rounded', 'blueprint'] &&
+        app.tone in ['natural', 'crisp', 'warm', 'steel', 'mono'] &&
+        (app.brightness is int || app.brightness is float) && app.brightness >= 80 && app.brightness <= 130 &&
+        (app.contrast is int || app.contrast is float) && app.contrast >= 85 && app.contrast <= 130 &&
+        (app.saturation is int || app.saturation is float) && app.saturation >= 0 && app.saturation <= 135 &&
+        app.showBadge is bool;
+    }
+
     // --- Entity Validation Blueprints ---
     function isValidProject(data) {
       return isValidString(data.title, 3, 120) &&
@@ -78,6 +93,7 @@ service cloud.firestore {
         isValidUrlArray(data.imageUrls) &&
         isValidStoragePathArray(data.storagePaths) &&
         data.imageUrls.size() == data.storagePaths.size() &&
+        (!('photoAppearance' in data) || isValidPhotoAppearance(data.photoAppearance)) &&
         data.status in ['draft', 'published'] &&
         isValidId(data.authorId) &&
         data.createdAt is timestamp &&
@@ -122,7 +138,7 @@ service cloud.firestore {
       allow create: if isVerifiedUser() &&
         isValidId(projectId) &&
         incoming().keys().hasAll(['title', 'description', 'category', 'imageUrls', 'storagePaths', 'status', 'authorId', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['title', 'description', 'category', 'location', 'completionYear', 'imageUrls', 'storagePaths', 'status', 'authorId', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['title', 'description', 'category', 'location', 'completionYear', 'imageUrls', 'storagePaths', 'photoAppearance', 'status', 'authorId', 'createdAt', 'updatedAt']) &&
         isValidProject(incoming()) &&
         incoming().authorId == request.auth.uid &&
         incoming().createdAt == request.time &&
@@ -137,7 +153,8 @@ service cloud.firestore {
         incoming().updatedAt == request.time &&
         isAdmin() &&
         (
-          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'location', 'completionYear', 'imageUrls', 'storagePaths', 'status', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'location', 'completionYear', 'imageUrls', 'storagePaths', 'photoAppearance', 'status', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['photoAppearance', 'updatedAt']) ||
           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
         );
 

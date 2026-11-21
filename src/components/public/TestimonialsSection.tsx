@@ -7,23 +7,34 @@ import type { TestimonialRecord } from '../../types';
 export const TestimonialsSection: React.FC = () => {
   const [firebaseTestimonials, setFirebaseTestimonials] = useState<TestimonialRecord[]>([]);
   const [localTestimonials, setLocalTestimonials] = useState<TestimonialRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [localLoaded, setLocalLoaded] = useState(false);
+  const [firebaseLoaded, setFirebaseLoaded] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     fetchLocalPublicPortfolio().then((res) => {
+      if (!mounted) return;
       setLocalTestimonials(res.testimonials);
+      setLocalLoaded(true);
     });
     const unsubscribe = subscribePublishedTestimonials(
       (items) => {
+        if (!mounted) return;
         setFirebaseTestimonials(items);
-        setLoading(false);
+        setFirebaseLoaded(true);
       },
       () => {
-        setLoading(false);
+        if (!mounted) return;
+        setFirebaseLoaded(true);
       }
     );
-    return () => unsubscribe();
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
+
+  const loading = !(firebaseLoaded || (localLoaded && localTestimonials.length > 0));
 
   const testimonials = useMemo(() => {
     const map: Record<string, TestimonialRecord> = {};

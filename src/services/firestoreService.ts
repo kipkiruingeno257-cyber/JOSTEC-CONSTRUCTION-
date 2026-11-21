@@ -25,11 +25,13 @@ import {
   storage,
 } from '../lib/firebase';
 import { deleteAppServerMedia } from './localMediaService';
+import { normalizePhotoAppearance } from '../utils/photoAppearance';
 import {
   PROJECT_CATEGORIES,
   SCHEMA_LIMITS,
   type InquiryRecord,
   type InquiryStatus,
+  type PhotoAppearance,
   type ProjectCategory,
   type ProjectRecord,
   type ProjectStatus,
@@ -318,6 +320,7 @@ export interface ProjectInputPayload {
   completionYear?: string;
   imageUrls: string[];
   storagePaths: string[];
+  photoAppearance?: PhotoAppearance;
   status: ProjectStatus;
 }
 
@@ -355,6 +358,7 @@ function validateAndSanitizeProjectInput(input: ProjectInputPayload): ProjectInp
     completionYear,
     imageUrls: input.imageUrls,
     storagePaths: input.storagePaths,
+    photoAppearance: normalizePhotoAppearance(input.photoAppearance),
     status: input.status,
   };
 }
@@ -379,6 +383,7 @@ export async function createProject(
       completionYear: clean.completionYear ?? '',
       imageUrls: clean.imageUrls,
       storagePaths: clean.storagePaths,
+      photoAppearance: clean.photoAppearance,
       status: clean.status,
       authorId: currentUser.uid,
       createdAt: serverTimestamp(),
@@ -411,12 +416,29 @@ export async function updateProject(
       completionYear: clean.completionYear ?? '',
       imageUrls: clean.imageUrls,
       storagePaths: clean.storagePaths,
+      photoAppearance: clean.photoAppearance,
       status: clean.status,
       updatedAt: serverTimestamp(),
     });
     if (removedStoragePaths.length > 0) {
       await deleteStorageObjects(removedStoragePaths);
     }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, docPath);
+  }
+}
+
+export async function updateProjectPhotoAppearance(
+  projectId: string,
+  appearance: PhotoAppearance
+): Promise<void> {
+  const docPath = `projects/${projectId}`;
+  const cleanAppearance = normalizePhotoAppearance(appearance);
+  try {
+    await updateDoc(doc(db, 'projects', projectId), {
+      photoAppearance: cleanAppearance,
+      updatedAt: serverTimestamp(),
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, docPath);
   }

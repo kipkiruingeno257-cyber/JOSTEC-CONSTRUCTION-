@@ -7,12 +7,27 @@ import {
   Globe,
   Images,
   Search,
+  SlidersHorizontal,
   Trash2,
+  X,
 } from 'lucide-react';
 import type { AdminSessionMode } from '../../context/FirebaseContext';
-import { deleteProjectWithMedia, toggleProjectStatus } from '../../services/firestoreService';
+import {
+  deleteProjectWithMedia,
+  toggleProjectStatus,
+  updateProjectPhotoAppearance,
+} from '../../services/firestoreService';
 import { deleteLocalProject, updateLocalProject } from '../../services/localMediaService';
-import { PROJECT_CATEGORIES, type ProjectRecord } from '../../types';
+import { PROJECT_CATEGORIES, type PhotoAppearance, type ProjectRecord } from '../../types';
+import {
+  getAspectClass,
+  getCardFrameClasses,
+  getImageFilterCss,
+  getObjectPositionClass,
+  normalizePhotoAppearance,
+} from '../../utils/photoAppearance';
+import { FastImage } from '../FastImage';
+import { PhotoAppearanceEditor } from './PhotoAppearanceEditor';
 
 interface ProjectsManagerProps {
   mode: AdminSessionMode;
@@ -34,6 +49,10 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState<ProjectRecord | null>(null);
+
+  const [appearanceTarget, setAppearanceTarget] = useState<ProjectRecord | null>(null);
+  const [draftAppearance, setDraftAppearance] = useState<PhotoAppearance | null>(null);
+  const [savingAppearance, setSavingAppearance] = useState(false);
 
   const filtered = useMemo(() => {
     return projects.filter((p) => {
@@ -96,6 +115,34 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
       onNotify('error', err instanceof Error ? err.message : 'Unable to delete project.');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const openAppearanceModal = (project: ProjectRecord) => {
+    setAppearanceTarget(project);
+    setDraftAppearance(normalizePhotoAppearance(project.photoAppearance));
+  };
+
+  const handleSaveAppearance = async () => {
+    if (!appearanceTarget || !draftAppearance) return;
+    setSavingAppearance(true);
+    try {
+      if (mode === 'local') {
+        await updateLocalProject(appearanceTarget.id, { photoAppearance: draftAppearance });
+        await onLocalMutated?.();
+      } else {
+        await updateProjectPhotoAppearance(appearanceTarget.id, draftAppearance);
+      }
+      onNotify(
+        'success',
+        `Updated photo appearance for "${appearanceTarget.title}" across the dashboard and public gallery.`
+      );
+      setAppearanceTarget(null);
+      setDraftAppearance(null);
+    } catch (err) {
+      onNotify('error', err instanceof Error ? err.message : 'Unable to save photo appearance.');
+    } finally {
+      setSavingAppearance(false);
     }
   };
 
@@ -166,39 +213,61 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
           {filtered.map((project) => {
             const isBusy = busyId === project.id;
             const thumb = project.imageUrls?.[0];
+            const app = normalizePhotoAppearance(project.photoAppearance);
+            const aspectClass = getAspectClass(app.aspectRatio);
+            const posClass = getObjectPositionClass(app.focalPoint);
+            const frameClasses = getCardFrameClasses(app.frameStyle);
+            const filterCss = getImageFilterCss(app);
+            const isBlueprint = app.frameStyle === 'blueprint';
+
             return (
               <article
                 key={project.id}
-                className="bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col justify-between"
+                className={`overflow-hidden flex flex-col justify-between ${frameClasses.card}`}
               >
                 <div>
-                  <div className="relative aspect-[4/3] bg-slate-100 border-b border-slate-200">
+                  <div
+                    className={`relative ${aspectClass} ${frameClasses.viewportBg} border-b ${
+                      isBlueprint ? 'border-white/10' : 'border-slate-200'
+                    } overflow-hidden`}
+                  >
                     {thumb ? (
-                      <img
+                      <FastImage
                         src={thumb}
                         alt={project.title}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
+                        darkBg={isBlueprint}
+                        style={filterCss ? { filter: filterCss } : undefined}
+                        className={`w-full h-full ${
+                          app.objectFit === 'contain' ? 'object-contain' : 'object-cover'
+                        } ${posClass}`}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
                         No photograph uploaded
                       </div>
                     )}
-                    <div className="absolute top-3 right-3 bg-[#0B1B2B]/85 text-white text-xs font-mono tabular-nums px-2 py-1 rounded">
-                      {project.imageUrls?.length ?? 0} photo
-                      {project.imageUrls?.length === 1 ? '' : 's'}
-                    </div>
+                    {app.showBadge && (
+                      <div className="absolute top-3 right-3 bg-[#0B1B2B]/85 text-white text-xs font-mono tabular-nums px-2 py-1 rounded">
+                        {project.imageUrls?.length ?? 0} photo
+                        {project.imageUrls?.length === 1 ? '' : 's'}
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-5">
                     <div className="flex items-center justify-between gap-2 text-xs mb-2">
-                      <span className="font-semibold text-orange-600 truncate">
+                      <span className="font-semibold text-orange-500 truncate">
                         {project.category}
                       </span>
                       <span
                         className={`inline-flex items-center gap-1 font-semibold shrink-0 ${
-                          project.status === 'published' ? 'text-emerald-700' : 'text-amber-700'
+                          project.status === 'published'
+                            ? isBlueprint
+                              ? 'text-emerald-400'
+                              : 'text-emerald-700'
+                            : isBlueprint
+                              ? 'text-amber-300'
+                              : 'text-amber-700'
                         }`}
                       >
                         {project.status === 'published' ? (
@@ -215,21 +284,29 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
                       </span>
                     </div>
 
-                    <h3 className="font-display text-base font-bold text-[#0B1B2B] mb-1.5">
+                    <h3
+                      className={`font-display text-base font-bold mb-1.5 ${
+                        isBlueprint ? 'text-white' : 'text-[#0B1B2B]'
+                      }`}
+                    >
                       {project.title}
                     </h3>
-                    <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                    <p
+                      className={`text-xs line-clamp-2 leading-relaxed ${
+                        isBlueprint ? 'text-slate-300' : 'text-slate-600'
+                      }`}
+                    >
                       {project.description}
                     </p>
                   </div>
                 </div>
 
-                <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-slate-800">
                   <button
                     type="button"
                     disabled={isBusy}
                     onClick={() => handleToggleStatus(project)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                       project.status === 'published'
                         ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
                         : 'bg-emerald-600 text-white hover:bg-emerald-700'
@@ -248,12 +325,22 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
                     )}
                   </button>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => openAppearanceModal(project)}
+                      title="Modify Photo Appearance"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-orange-700 border border-orange-200 bg-orange-50 rounded-md hover:bg-orange-100 cursor-pointer"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      Photo Look
+                    </button>
                     <button
                       type="button"
                       disabled={isBusy}
                       onClick={() => onEditProject(project)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-[#0B1B2B] border border-slate-300 bg-white rounded-md hover:bg-slate-100 cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-[#0B1B2B] border border-slate-300 bg-white rounded-md hover:bg-slate-100 cursor-pointer"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                       Edit
@@ -263,16 +350,81 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
                       disabled={isBusy}
                       onClick={() => setConfirmDeleteProject(project)}
                       aria-label={`Delete ${project.title}`}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-700 border border-red-200 bg-red-50 rounded-md hover:bg-red-100 cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-red-700 border border-red-200 bg-red-50 rounded-md hover:bg-red-100 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Delete
                     </button>
                   </div>
                 </div>
               </article>
             );
           })}
+        </div>
+      )}
+
+      {/* Photo Appearance Studio Modal */}
+      {appearanceTarget && draftAppearance && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Modify photo appearance for ${appearanceTarget.title}`}
+          className="fixed inset-0 z-50 bg-[#0B1B2B]/80 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div className="bg-slate-50 border border-slate-200 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6 space-y-5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="font-display text-lg font-bold text-[#0B1B2B] truncate">
+                  Customize Photo Appearance · {appearanceTarget.title}
+                </h3>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Adjust framing, crop focal alignment, card finish, and color tone in real time.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAppearanceTarget(null);
+                  setDraftAppearance(null);
+                }}
+                aria-label="Close appearance editor"
+                className="p-2 rounded-md text-slate-600 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <PhotoAppearanceEditor
+              compact
+              value={draftAppearance}
+              onChange={setDraftAppearance}
+              previewUrl={appearanceTarget.imageUrls?.[0]}
+              previewTitle={appearanceTarget.title}
+              previewCategory={appearanceTarget.category}
+              photoCount={appearanceTarget.imageUrls?.length ?? 0}
+            />
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={savingAppearance}
+                onClick={() => {
+                  setAppearanceTarget(null);
+                  setDraftAppearance(null);
+                }}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingAppearance}
+                onClick={handleSaveAppearance}
+                className="px-5 py-2 text-sm font-semibold text-white bg-orange-600 rounded-md hover:bg-orange-700 disabled:opacity-60 cursor-pointer"
+              >
+                {savingAppearance ? 'Saving...' : 'Save Photo Appearance'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

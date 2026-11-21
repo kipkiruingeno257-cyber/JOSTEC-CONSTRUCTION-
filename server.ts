@@ -30,6 +30,57 @@ function loadFirebaseApiKey(): string {
 
 const FIREBASE_API_KEY = loadFirebaseApiKey();
 
+interface LocalPhotoAppearance {
+  aspectRatio: '4/3' | '16/9' | '1/1' | '3/4';
+  objectFit: 'cover' | 'contain';
+  focalPoint: 'center' | 'top' | 'bottom' | 'left' | 'right';
+  frameStyle: 'clean' | 'elevated' | 'rounded' | 'blueprint';
+  tone: 'natural' | 'crisp' | 'warm' | 'steel' | 'mono';
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  showBadge: boolean;
+}
+
+function sanitizePhotoAppearance(raw: unknown): LocalPhotoAppearance {
+  const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const clampNum = (v: unknown, min: number, max: number, def: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.round(n))) : def;
+  };
+  return {
+    aspectRatio:
+      obj.aspectRatio === '16/9' || obj.aspectRatio === '1/1' || obj.aspectRatio === '3/4'
+        ? obj.aspectRatio
+        : '4/3',
+    objectFit: obj.objectFit === 'contain' ? 'contain' : 'cover',
+    focalPoint:
+      obj.focalPoint === 'top' ||
+      obj.focalPoint === 'bottom' ||
+      obj.focalPoint === 'left' ||
+      obj.focalPoint === 'right'
+        ? obj.focalPoint
+        : 'center',
+    frameStyle:
+      obj.frameStyle === 'elevated' ||
+      obj.frameStyle === 'rounded' ||
+      obj.frameStyle === 'blueprint'
+        ? obj.frameStyle
+        : 'clean',
+    tone:
+      obj.tone === 'crisp' ||
+      obj.tone === 'warm' ||
+      obj.tone === 'steel' ||
+      obj.tone === 'mono'
+        ? obj.tone
+        : 'natural',
+    brightness: clampNum(obj.brightness, 80, 130, 100),
+    contrast: clampNum(obj.contrast, 85, 130, 100),
+    saturation: clampNum(obj.saturation, 0, 135, 100),
+    showBadge: typeof obj.showBadge === 'boolean' ? obj.showBadge : true,
+  };
+}
+
 interface LocalProject {
   id: string;
   title: string;
@@ -39,6 +90,7 @@ interface LocalProject {
   completionYear?: string;
   imageUrls: string[];
   storagePaths: string[];
+  photoAppearance?: LocalPhotoAppearance;
   status: 'draft' | 'published';
   authorId: string;
   createdAtMs: number;
@@ -495,6 +547,7 @@ async function startServer() {
       completionYear: String(b.completionYear || '').trim().slice(0, 10),
       imageUrls,
       storagePaths,
+      photoAppearance: sanitizePhotoAppearance(b.photoAppearance),
       status: b.status === 'published' ? 'published' : 'draft',
       authorId: 'local-admin',
       createdAtMs: now,
@@ -543,6 +596,10 @@ async function startServer() {
       storagePaths: Array.isArray(b.storagePaths)
         ? b.storagePaths.slice(0, nextUrls.length).map(String)
         : existing.storagePaths,
+      photoAppearance:
+        b.photoAppearance !== undefined
+          ? sanitizePhotoAppearance(b.photoAppearance)
+          : existing.photoAppearance,
       status: b.status === 'published' || b.status === 'draft' ? b.status : existing.status,
       updatedAtMs: Date.now(),
     };
@@ -669,6 +726,15 @@ async function startServer() {
     res.json({ deleted: true });
   });
 
+  // Fast cached static asset delivery for bundled site photography
+  app.use(
+    '/src/assets/images',
+    express.static(path.resolve(__dirname, 'src/assets/images'), {
+      maxAge: '30d',
+      immutable: true,
+    })
+  );
+
   // --- Vite Dev Middleware or Static Production Assets ---
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
@@ -679,7 +745,11 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(__dirname, 'dist');
-    app.use(express.static(distDir));
+    app.use(
+      express.static(distDir, {
+        maxAge: '7d',
+      })
+    );
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
     });

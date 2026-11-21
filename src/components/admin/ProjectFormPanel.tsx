@@ -33,11 +33,18 @@ import {
 import {
   PROJECT_CATEGORIES,
   SCHEMA_LIMITS,
+  type PhotoAppearance,
   type ProjectCategory,
   type ProjectRecord,
   type ProjectStatus,
 } from '../../types';
 import { formatBytes, processImageFile } from '../../utils/imageProcessor';
+import {
+  getImageFilterCss,
+  loadDefaultPhotoAppearance,
+  normalizePhotoAppearance,
+} from '../../utils/photoAppearance';
+import { PhotoAppearanceEditor } from './PhotoAppearanceEditor';
 
 type UploadDestination = 'server' | 'firebase';
 
@@ -76,11 +83,14 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
   const [photos, setPhotos] = useState<UnifiedPhotoItem[]>([]);
   const [removedStoragePaths, setRemovedStoragePaths] = useState<string[]>([]);
 
-  // Advanced image ingestion controls
+  // Advanced image ingestion controls & appearance studio
   const [ingestTab, setIngestTab] = useState<'device' | 'url'>('device');
   const [uploadDestination, setUploadDestination] = useState<UploadDestination>('server');
   const [optimizeImages, setOptimizeImages] = useState(true);
   const [urlInputText, setUrlInputText] = useState('');
+  const [photoAppearance, setPhotoAppearance] = useState<PhotoAppearance>(() =>
+    loadDefaultPhotoAppearance()
+  );
 
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -116,6 +126,7 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
       setCategory(editingProject.category);
       setLocation(editingProject.location ?? '');
       setCompletionYear(editingProject.completionYear ?? String(new Date().getFullYear()));
+      setPhotoAppearance(normalizePhotoAppearance(editingProject.photoAppearance));
       setRemovedStoragePaths([]);
     } else {
       setTitle('');
@@ -123,6 +134,7 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
       setCategory('Gate Installation');
       setLocation('');
       setCompletionYear(String(new Date().getFullYear()));
+      setPhotoAppearance(loadDefaultPhotoAppearance());
       setRemovedStoragePaths([]);
     }
     setUrlInputText('');
@@ -357,6 +369,7 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
         completionYear,
         imageUrls: finalUrls,
         storagePaths: finalPaths,
+        photoAppearance: normalizePhotoAppearance(photoAppearance),
         status: targetStatus,
       };
 
@@ -593,7 +606,7 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
                   />
                   <Sparkles className="w-3.5 h-3.5 text-orange-600 shrink-0" />
                   <span>
-                    <strong>Auto-Optimize Photos</strong> (WebP · Max 1600px for fast mobile uploads)
+                    <strong>Auto-Optimize Photos</strong> (Fast WebP · Max 1440px for rapid loading)
                   </span>
                 </label>
 
@@ -726,11 +739,14 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
                       src={photo.previewUrl}
                       alt={photo.label}
                       referrerPolicy="no-referrer"
-                      style={
-                        photo.rotateTurns
+                      style={{
+                        ...(photo.rotateTurns
                           ? { transform: `rotate(${photo.rotateTurns * 90}deg)` }
-                          : undefined
-                      }
+                          : {}),
+                        ...(getImageFilterCss(photoAppearance)
+                          ? { filter: getImageFilterCss(photoAppearance) }
+                          : {}),
+                      }}
                       className="w-full h-full object-cover transition-transform duration-150"
                     />
                     <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#0B1B2B]/85 text-white text-[11px] font-mono tabular-nums">
@@ -818,6 +834,16 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
             </div>
           )}
         </div>
+
+        {/* Photo Appearance & Framing Studio */}
+        <PhotoAppearanceEditor
+          value={photoAppearance}
+          onChange={setPhotoAppearance}
+          previewUrl={photos[0]?.previewUrl}
+          previewTitle={title || 'Project Card Title Preview'}
+          previewCategory={category}
+          photoCount={Math.max(photos.length, 1)}
+        />
 
         {/* Upload Progress Bar */}
         {uploading && (

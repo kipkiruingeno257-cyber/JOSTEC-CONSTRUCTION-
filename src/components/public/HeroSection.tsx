@@ -1,18 +1,24 @@
 import React from 'react';
 import { ArrowRight, Building2 } from 'lucide-react';
+import { FastImage } from '../FastImage';
 
-const HERO_IMAGE = '/src/assets/images/hero_structural_gate_1795248991739.jpg';
+const HERO_IMAGE_JPG = '/src/assets/images/hero_structural_gate_1795248991739.jpg';
+const HERO_IMAGE_WEBP = '/src/assets/images/hero_structural_gate_1795248991739.webp';
 
 export const HeroSection: React.FC = () => {
   return (
     <section id="top" className="bg-[#0B1B2B] text-white">
       <div className="relative min-h-[560px] lg:min-h-[640px] flex items-center">
-        <img
-          src={HERO_IMAGE}
-          alt="Custom fabricated heavy-duty structural steel sliding gate and concrete perimeter wall"
-          referrerPolicy="no-referrer"
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+        <div className="absolute inset-0">
+          <FastImage
+            src={HERO_IMAGE_JPG}
+            webpSrc={HERO_IMAGE_WEBP}
+            alt="Custom fabricated heavy-duty structural steel sliding gate and concrete perimeter wall"
+            priority
+            darkBg
+            className="w-full h-full object-cover"
+          />
+        </div>
         <div
           aria-hidden="true"
           className="absolute inset-0 bg-gradient-to-r from-[#0B1B2B]/95 via-[#0B1B2B]/75 to-[#0B1B2B]/30"

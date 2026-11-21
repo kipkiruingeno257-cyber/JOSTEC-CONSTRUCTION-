@@ -1,9 +1,12 @@
 import React from 'react';
-import { Lock } from 'lucide-react';
+import { ShieldCheck, UserCog } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useFirebase } from '../../context/FirebaseContext';
 import { COMPANY_INFO } from '../../types';
 
 export const Footer: React.FC = () => {
+  const { activeAdminMode } = useFirebase();
+
   return (
     <footer className="bg-[#0B1B2B] text-slate-300 border-t border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -42,8 +45,8 @@ export const Footer: React.FC = () => {
                 to="/admin"
                 className="inline-flex items-center gap-1.5 text-orange-400 hover:text-orange-300 font-medium pt-1 transition-colors"
               >
-                <Lock className="w-3.5 h-3.5" />
-                Owner Dashboard
+                <UserCog className="w-4 h-4 shrink-0" />
+                {activeAdminMode ? 'Admin Dashboard' : 'Admin Login'}
               </Link>
             </div>
           </div>
@@ -53,7 +56,27 @@ export const Footer: React.FC = () => {
           <p>
             &copy; {new Date().getFullYear()} {COMPANY_INFO.name}. All rights reserved.
           </p>
-          <p>Structural Engineering · Metal Fabrication · Perimeter Security</p>
+
+          <div className="flex items-center gap-4">
+            <span className="hidden sm:inline">
+              Structural Engineering · Metal Fabrication · Perimeter Security
+            </span>
+            <Link
+              to="/admin"
+              aria-label={activeAdminMode ? 'Open Admin Dashboard' : 'Administrator Login'}
+              title={activeAdminMode ? 'Open Admin Dashboard' : 'Administrator Login'}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-orange-500/40 bg-orange-600/15 text-white hover:bg-orange-600 hover:border-orange-600 transition-colors whitespace-nowrap shrink-0"
+            >
+              {activeAdminMode ? (
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <UserCog className="w-4 h-4 text-orange-400 shrink-0" />
+              )}
+              <span className="font-semibold">
+                {activeAdminMode ? 'Admin Dashboard' : 'Admin Login'}
+              </span>
+            </Link>
+          </div>
         </div>
       </div>
     </footer>

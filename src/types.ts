@@ -71,6 +71,36 @@ export const SCHEMA_LIMITS = {
   },
 } as const;
 
+export type PhotoAspectRatio = '4/3' | '16/9' | '1/1' | '3/4';
+export type PhotoObjectFit = 'cover' | 'contain';
+export type PhotoFocalPoint = 'center' | 'top' | 'bottom' | 'left' | 'right';
+export type PhotoFrameStyle = 'clean' | 'elevated' | 'rounded' | 'blueprint';
+export type PhotoTonePreset = 'natural' | 'crisp' | 'warm' | 'steel' | 'mono';
+
+export interface PhotoAppearance {
+  aspectRatio: PhotoAspectRatio;
+  objectFit: PhotoObjectFit;
+  focalPoint: PhotoFocalPoint;
+  frameStyle: PhotoFrameStyle;
+  tone: PhotoTonePreset;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  showBadge: boolean;
+}
+
+export const DEFAULT_PHOTO_APPEARANCE: PhotoAppearance = {
+  aspectRatio: '4/3',
+  objectFit: 'cover',
+  focalPoint: 'center',
+  frameStyle: 'clean',
+  tone: 'natural',
+  brightness: 100,
+  contrast: 100,
+  saturation: 100,
+  showBadge: true,
+};
+
 export interface ProjectRecord {
   id: string;
   title: string;
@@ -80,6 +110,7 @@ export interface ProjectRecord {
   completionYear?: string;
   imageUrls: string[];
   storagePaths: string[];
+  photoAppearance?: PhotoAppearance;
   status: ProjectStatus;
   authorId: string;
   createdAt?: Timestamp | null;

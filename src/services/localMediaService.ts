@@ -3,6 +3,7 @@ import { processImageFile } from '../utils/imageProcessor';
 import type {
   InquiryRecord,
   InquiryStatus,
+  PhotoAppearance,
   ProjectCategory,
   ProjectRecord,
   ProjectStatus,
@@ -45,22 +46,22 @@ export async function uploadImagesToAppServer(
   if (items.length === 0) return [];
   const authHeaders = await getAuthHeaders();
 
-  const processedList = [];
-  for (const item of items) {
-    const processed = await processImageFile(item.file, {
-      optimize: options.optimize,
-      rotateQuarterTurns: item.rotateQuarterTurns ?? 0,
-    });
-    processedList.push(processed);
-  }
+  const processedList = await Promise.all(
+    items.map((item) =>
+      processImageFile(item.file, {
+        optimize: options.optimize,
+        rotateQuarterTurns: item.rotateQuarterTurns ?? 0,
+      })
+    )
+  );
 
   const totalBytes = processedList.reduce((sum, p) => sum + Math.max(p.processedSize, 1), 0);
   const uploadedPerFile = new Array<number>(processedList.length).fill(0);
-  const results: MediaUploadOutput[] = [];
+  const results = new Array<MediaUploadOutput>(processedList.length);
 
-  for (let i = 0; i < processedList.length; i++) {
+  const uploadSingle = (i: number): Promise<void> => {
     const item = processedList[i];
-    const uploaded = await new Promise<MediaUploadOutput>((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/media/upload', true);
       xhr.withCredentials = true;
@@ -85,10 +86,14 @@ export async function uploadImagesToAppServer(
             const parsed = JSON.parse(xhr.responseText) as MediaUploadOutput;
             uploadedPerFile[i] = item.processedSize;
             onProgress?.(
-              Math.min(100, Math.round((uploadedPerFile.reduce((a, b) => a + b, 0) / totalBytes) * 100)),
+              Math.min(
+                100,
+                Math.round((uploadedPerFile.reduce((a, b) => a + b, 0) / totalBytes) * 100)
+              ),
               item.fileName
             );
-            resolve(parsed);
+            results[i] = parsed;
+            resolve();
           } catch {
             reject(new Error('Invalid response from media upload server.'));
           }
@@ -110,9 +115,19 @@ export async function uploadImagesToAppServer(
 
       xhr.send(item.blob);
     });
+  };
 
-    results.push(uploaded);
-  }
+  // Upload up to 3 images in parallel for faster multi-photo completion
+  const concurrency = Math.min(3, processedList.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (cursor < processedList.length) {
+        const index = cursor++;
+        await uploadSingle(index);
+      }
+    })
+  );
 
   return results;
 }
@@ -220,6 +235,7 @@ export async function createLocalProject(payload: {
   completionYear?: string;
   imageUrls: string[];
   storagePaths: string[];
+  photoAppearance?: PhotoAppearance;
   status: ProjectStatus;
 }): Promise<ProjectRecord> {
   const res = await fetch('/api/local/projects', {
@@ -245,6 +261,7 @@ export async function updateLocalProject(
     completionYear: string;
     imageUrls: string[];
     storagePaths: string[];
+    photoAppearance: PhotoAppearance;
     status: ProjectStatus;
   }>,
   removedStoragePaths: string[] = []

@@ -8,7 +8,7 @@ export interface ProcessedImageResult {
   mimeType: string;
 }
 
-const MAX_DIMENSION = 1600;
+const MAX_DIMENSION = 1440;
 
 /**
  * Optimizes and/or rotates an image file client-side using HTML5 Canvas
@@ -71,7 +71,7 @@ export async function processImageFile(
   }
 
   const targetMime = file.type === 'image/png' && !options.optimize ? 'image/png' : 'image/webp';
-  const quality = options.optimize ? 0.84 : 0.94;
+  const quality = options.optimize ? 0.8 : 0.92;
 
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(

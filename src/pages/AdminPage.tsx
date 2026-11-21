@@ -18,10 +18,12 @@ import {
   Server,
   Settings,
   ShieldAlert,
+  SlidersHorizontal,
   X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { InquiriesManager } from '../components/admin/InquiriesManager';
+import { PhotoAppearanceStudioTab } from '../components/admin/PhotoAppearanceStudioTab';
 import { ProjectFormPanel } from '../components/admin/ProjectFormPanel';
 import { ProjectsManager } from '../components/admin/ProjectsManager';
 import { SetupGuidePanel } from '../components/admin/SetupGuidePanel';
@@ -33,6 +35,7 @@ import {
   subscribeInquiries,
 } from '../services/firestoreService';
 import { fetchLocalAdminData } from '../services/localMediaService';
+import { getImageFilterCss, normalizePhotoAppearance } from '../utils/photoAppearance';
 import {
   BOOTSTRAPPED_ADMIN_EMAIL,
   COMPANY_INFO,
@@ -41,7 +44,14 @@ import {
   type TestimonialRecord,
 } from '../types';
 
-type AdminTab = 'overview' | 'upload' | 'projects' | 'testimonials' | 'inquiries' | 'setup';
+type AdminTab =
+  | 'overview'
+  | 'upload'
+  | 'projects'
+  | 'appearance'
+  | 'testimonials'
+  | 'inquiries'
+  | 'setup';
 
 export const AdminPage: React.FC = () => {
   const {
@@ -304,6 +314,7 @@ export const AdminPage: React.FC = () => {
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'upload', label: editingProject ? 'Edit Project' : 'Upload Project', icon: ImagePlus },
     { id: 'projects', label: 'Project Gallery', icon: FolderKanban, badge: stats.totalProjects },
+    { id: 'appearance', label: 'Photo Appearance', icon: SlidersHorizontal },
     { id: 'testimonials', label: 'Testimonials', icon: MessageSquareQuote },
     { id: 'inquiries', label: 'Client Inquiries', icon: Mail, badge: stats.newInquiriesCount },
     { id: 'setup', label: 'Setup & Rules', icon: Settings },
@@ -550,17 +561,27 @@ export const AdminPage: React.FC = () => {
 
               {/* Recent Uploads Table */}
               <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-4">
+                <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
                   <h2 className="font-display text-base font-bold text-[#0B1B2B]">
                     Recent Project Uploads
                   </h2>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('projects')}
-                    className="text-xs font-semibold text-orange-600 hover:text-orange-700 cursor-pointer"
-                  >
-                    Manage All Projects
-                  </button>
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('appearance')}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0B1B2B] hover:text-orange-600 cursor-pointer"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-orange-600" />
+                      Photo Appearance
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('projects')}
+                      className="text-xs font-semibold text-orange-600 hover:text-orange-700 cursor-pointer"
+                    >
+                      Manage All Projects
+                    </button>
+                  </div>
                 </div>
 
                 {projects.length === 0 ? (
@@ -591,7 +612,14 @@ export const AdminPage: React.FC = () => {
                               <img
                                 src={proj.imageUrls[0]}
                                 alt={proj.title}
+                                loading="lazy"
+                                decoding="async"
                                 referrerPolicy="no-referrer"
+                                style={{
+                                  filter: getImageFilterCss(
+                                    normalizePhotoAppearance(proj.photoAppearance)
+                                  ),
+                                }}
                                 className="w-full h-full object-cover"
                               />
                             ) : null}
@@ -675,6 +703,16 @@ export const AdminPage: React.FC = () => {
                 setEditingProject(proj);
                 setActiveTab('upload');
               }}
+              onNotify={notify}
+              onLocalMutated={refreshLocalData}
+            />
+          )}
+
+          {/* Photo Appearance Studio Tab */}
+          {activeTab === 'appearance' && (
+            <PhotoAppearanceStudioTab
+              mode={activeAdminMode}
+              projects={projects}
               onNotify={notify}
               onLocalMutated={refreshLocalData}
             />

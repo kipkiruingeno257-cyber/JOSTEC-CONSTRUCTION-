@@ -12,11 +12,29 @@ import { Link } from 'react-router-dom';
 import { subscribePublishedProjects } from '../../services/firestoreService';
 import { fetchLocalPublicPortfolio } from '../../services/localMediaService';
 import { PROJECT_CATEGORIES, type ProjectRecord } from '../../types';
+import {
+  getAspectClass,
+  getCardFrameClasses,
+  getImageFilterCss,
+  getObjectPositionClass,
+  normalizePhotoAppearance,
+} from '../../utils/photoAppearance';
+import { FastImage } from '../FastImage';
+
+function preloadProjectPhotos(urls: string[]) {
+  urls.slice(0, 6).forEach((url) => {
+    if (!url) return;
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+  });
+}
 
 export const ProjectGallerySection: React.FC = () => {
   const [firebaseProjects, setFirebaseProjects] = useState<ProjectRecord[]>([]);
   const [localProjects, setLocalProjects] = useState<ProjectRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [localLoaded, setLocalLoaded] = useState(false);
+  const [firebaseLoaded, setFirebaseLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
@@ -24,31 +42,41 @@ export const ProjectGallerySection: React.FC = () => {
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    setLoading(true);
+    let mounted = true;
     fetchLocalPublicPortfolio().then((res) => {
+      if (!mounted) return;
       setLocalProjects(res.projects);
+      setLocalLoaded(true);
     });
 
     const unsubscribe = subscribePublishedProjects(
       (items) => {
+        if (!mounted) return;
         setFirebaseProjects(items);
-        setLoading(false);
+        setFirebaseLoaded(true);
         setLoadError(null);
       },
       (err) => {
+        if (!mounted) return;
         setLoadError(err.message);
-        setLoading(false);
+        setFirebaseLoaded(true);
       }
     );
-    return () => unsubscribe();
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
+
+  const loading = !(firebaseLoaded || (localLoaded && localProjects.length > 0));
 
   const projects = useMemo(() => {
     const map: Record<string, ProjectRecord> = {};
     for (const p of localProjects) map[p.id] = p;
     for (const p of firebaseProjects) map[p.id] = p;
     const getTime = (p: ProjectRecord) =>
-      p.createdAtMs ?? (p.createdAt && typeof p.createdAt.toMillis === 'function' ? p.createdAt.toMillis() : 0);
+      p.createdAtMs ??
+      (p.createdAt && typeof p.createdAt.toMillis === 'function' ? p.createdAt.toMillis() : 0);
     return Object.values(map).sort((a, b) => getTime(b) - getTime(a));
   }, [firebaseProjects, localProjects]);
 
@@ -68,6 +96,9 @@ export const ProjectGallerySection: React.FC = () => {
   const openPreview = (project: ProjectRecord, photoIdx = 0) => {
     setActiveProject(project);
     setActivePhotoIndex(photoIdx);
+    if (project.imageUrls && project.imageUrls.length > 1) {
+      preloadProjectPhotos(project.imageUrls);
+    }
   };
 
   const closePreview = () => {
@@ -78,6 +109,11 @@ export const ProjectGallerySection: React.FC = () => {
   const markImageFailed = (key: string) => {
     setFailedImages((prev) => ({ ...prev, [key]: true }));
   };
+
+  const activeAppearance = activeProject
+    ? normalizePhotoAppearance(activeProject.photoAppearance)
+    : null;
+  const activeFilterCss = activeAppearance ? getImageFilterCss(activeAppearance) : undefined;
 
   return (
     <section id="projects" className="py-20 lg:py-24 bg-white border-b border-slate-200">
@@ -99,7 +135,9 @@ export const ProjectGallerySection: React.FC = () => {
             </p>
           </div>
           <div className="text-sm text-slate-500 font-mono tabular-nums shrink-0">
-            {loading ? 'Loading projects...' : `${filteredProjects.length} Project${filteredProjects.length === 1 ? '' : 's'} Shown`}
+            {loading
+              ? 'Loading projects...'
+              : `${filteredProjects.length} Project${filteredProjects.length === 1 ? '' : 's'} Shown`}
           </div>
         </div>
 
@@ -201,29 +239,43 @@ export const ProjectGallerySection: React.FC = () => {
 
         {/* Dynamic Project Grid */}
         {!loading && !loadError && filteredProjects.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 items-start">
             {filteredProjects.map((project) => {
               const coverUrl = project.imageUrls?.[0] ?? '';
               const imgKey = `${project.id}_0`;
               const hasValidImage = Boolean(coverUrl) && !failedImages[imgKey];
+              const app = normalizePhotoAppearance(project.photoAppearance);
+              const aspectClass = getAspectClass(app.aspectRatio);
+              const posClass = getObjectPositionClass(app.focalPoint);
+              const frameClasses = getCardFrameClasses(app.frameStyle);
+              const filterCss = getImageFilterCss(app);
+              const isBlueprint = app.frameStyle === 'blueprint';
 
               return (
                 <article
                   key={project.id}
-                  className="group border border-slate-200 rounded-lg overflow-hidden bg-white flex flex-col hover:border-slate-300 transition-colors"
+                  onMouseEnter={() => {
+                    if (project.imageUrls && project.imageUrls.length > 1) {
+                      preloadProjectPhotos(project.imageUrls);
+                    }
+                  }}
+                  className={`group overflow-hidden flex flex-col ${frameClasses.card}`}
                 >
                   <button
                     type="button"
                     onClick={() => openPreview(project, 0)}
-                    className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100 text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-orange-600"
+                    className={`relative ${aspectClass} w-full overflow-hidden ${frameClasses.viewportBg} text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-orange-600`}
                   >
                     {hasValidImage ? (
-                      <img
+                      <FastImage
                         src={coverUrl}
                         alt={project.title}
-                        referrerPolicy="no-referrer"
+                        darkBg={isBlueprint}
                         onError={() => markImageFailed(imgKey)}
-                        className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                        style={filterCss ? { filter: filterCss } : undefined}
+                        className={`w-full h-full ${
+                          app.objectFit === 'contain' ? 'object-contain' : 'object-cover'
+                        } ${posClass} group-hover:scale-[1.02] transition-transform duration-300`}
                       />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-slate-800 to-[#0B1B2B] flex flex-col items-center justify-center p-6 text-center text-slate-300">
@@ -231,7 +283,7 @@ export const ProjectGallerySection: React.FC = () => {
                         <span className="text-xs font-medium">{project.title}</span>
                       </div>
                     )}
-                    {project.imageUrls && project.imageUrls.length > 1 && (
+                    {app.showBadge && project.imageUrls && project.imageUrls.length > 1 && (
                       <div className="absolute bottom-3 right-3 bg-[#0B1B2B]/85 text-white text-xs font-mono tabular-nums px-2.5 py-1 rounded flex items-center gap-1.5">
                         <Images className="w-3.5 h-3.5 text-orange-400" />
                         <span>{project.imageUrls.length} Photos</span>
@@ -242,8 +294,12 @@ export const ProjectGallerySection: React.FC = () => {
                   <div className="p-6 flex-1 flex flex-col justify-between">
                     <div>
                       {/* Zero-Pill Metadata */}
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-2">
-                        <span className="font-semibold text-orange-600">{project.category}</span>
+                      <div
+                        className={`flex flex-wrap items-center gap-2 text-xs mb-2 ${
+                          isBlueprint ? 'text-slate-300' : 'text-slate-500'
+                        }`}
+                      >
+                        <span className="font-semibold text-orange-500">{project.category}</span>
                         {project.location && (
                           <>
                             <span aria-hidden="true">·</span>
@@ -258,30 +314,49 @@ export const ProjectGallerySection: React.FC = () => {
                         )}
                       </div>
 
-                      <h3 className="font-display text-lg font-bold text-[#0B1B2B] mb-2">
+                      <h3
+                        className={`font-display text-lg font-bold mb-2 ${
+                          isBlueprint ? 'text-white' : 'text-[#0B1B2B]'
+                        }`}
+                      >
                         <button
                           type="button"
                           onClick={() => openPreview(project, 0)}
-                          className="text-left hover:text-orange-600 transition-colors cursor-pointer"
+                          className="text-left hover:text-orange-500 transition-colors cursor-pointer"
                         >
                           {project.title}
                         </button>
                       </h3>
-                      <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">
+                      <p
+                        className={`text-sm leading-relaxed line-clamp-3 ${
+                          isBlueprint ? 'text-slate-300' : 'text-slate-600'
+                        }`}
+                      >
                         {project.description}
                       </p>
                     </div>
 
-                    <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+                    <div
+                      className={`mt-5 pt-4 border-t flex items-center justify-between ${
+                        isBlueprint ? 'border-white/10' : 'border-slate-100'
+                      }`}
+                    >
                       <button
                         type="button"
                         onClick={() => openPreview(project, 0)}
-                        className="text-sm font-semibold text-[#0B1B2B] hover:text-orange-600 transition-colors cursor-pointer"
+                        className={`text-sm font-semibold hover:text-orange-500 transition-colors cursor-pointer ${
+                          isBlueprint ? 'text-white' : 'text-[#0B1B2B]'
+                        }`}
                       >
                         Inspect Project Photos
                       </button>
-                      <span className="text-xs font-mono text-slate-400 tabular-nums">
-                        {project.imageUrls?.length ?? 0} file{project.imageUrls?.length === 1 ? '' : 's'}
+                      <span
+                        className={`text-xs font-mono tabular-nums ${
+                          isBlueprint ? 'text-slate-400' : 'text-slate-400'
+                        }`}
+                      >
+                        {project.imageUrls?.length ?? 0} file
+                        {project.imageUrls?.length === 1 ? '' : 's'}
                       </span>
                     </div>
                   </div>
@@ -321,7 +396,9 @@ export const ProjectGallerySection: React.FC = () => {
                   {activeProject.completionYear && (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span className="font-mono tabular-nums">{activeProject.completionYear}</span>
+                      <span className="font-mono tabular-nums">
+                        {activeProject.completionYear}
+                      </span>
                     </>
                   )}
                 </div>
@@ -346,7 +423,10 @@ export const ProjectGallerySection: React.FC = () => {
                   <img
                     src={activeProject.imageUrls[activePhotoIndex]}
                     alt={`${activeProject.title} photograph ${activePhotoIndex + 1}`}
+                    decoding="sync"
+                    fetchPriority="high"
                     referrerPolicy="no-referrer"
+                    style={activeFilterCss ? { filter: activeFilterCss } : undefined}
                     className="max-h-full max-w-full object-contain"
                   />
                   {activeProject.imageUrls.length > 1 && (
@@ -379,7 +459,9 @@ export const ProjectGallerySection: React.FC = () => {
                   )}
                 </>
               ) : (
-                <div className="text-slate-400 text-sm">No photographs attached to this project.</div>
+                <div className="text-slate-400 text-sm">
+                  No photographs attached to this project.
+                </div>
               )}
             </div>
 
@@ -392,13 +474,18 @@ export const ProjectGallerySection: React.FC = () => {
                     type="button"
                     onClick={() => setActivePhotoIndex(idx)}
                     className={`w-16 h-12 rounded overflow-hidden border-2 shrink-0 cursor-pointer ${
-                      idx === activePhotoIndex ? 'border-orange-600' : 'border-transparent opacity-70 hover:opacity-100'
+                      idx === activePhotoIndex
+                        ? 'border-orange-600'
+                        : 'border-transparent opacity-70 hover:opacity-100'
                     }`}
                   >
                     <img
                       src={url}
                       alt={`Thumbnail ${idx + 1}`}
+                      loading="lazy"
+                      decoding="async"
                       referrerPolicy="no-referrer"
+                      style={activeFilterCss ? { filter: activeFilterCss } : undefined}
                       className="w-full h-full object-cover"
                     />
                   </button>
