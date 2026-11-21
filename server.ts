@@ -134,24 +134,33 @@ interface AuthConfig {
   passcodeHash?: string;
 }
 
+let cachedStore: LocalStore | null = null;
+
 function readStore(): LocalStore {
+  if (cachedStore) {
+    return cachedStore;
+  }
   try {
     if (!fs.existsSync(STORE_PATH)) {
-      return { projects: [], testimonials: [], inquiries: [] };
+      cachedStore = { projects: [], testimonials: [], inquiries: [] };
+      return cachedStore;
     }
     const raw = fs.readFileSync(STORE_PATH, 'utf8');
     const parsed = JSON.parse(raw) as Partial<LocalStore>;
-    return {
+    cachedStore = {
       projects: Array.isArray(parsed.projects) ? parsed.projects : [],
       testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
       inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
     };
+    return cachedStore;
   } catch {
-    return { projects: [], testimonials: [], inquiries: [] };
+    cachedStore = { projects: [], testimonials: [], inquiries: [] };
+    return cachedStore;
   }
 }
 
 function writeStore(store: LocalStore): void {
+  cachedStore = store;
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), 'utf8');
 }
@@ -453,6 +462,7 @@ async function startServer() {
 
   // --- Standalone Local Mode Portfolio & Admin CRUD ---
   app.get('/api/local/portfolio', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
     const store = readStore();
     res.json({
       projects: store.projects

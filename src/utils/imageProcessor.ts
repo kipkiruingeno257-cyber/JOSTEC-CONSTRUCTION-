@@ -8,11 +8,11 @@ export interface ProcessedImageResult {
   mimeType: string;
 }
 
-const MAX_DIMENSION = 1440;
+const MAX_DIMENSION = 1200;
 
 /**
  * Optimizes and/or rotates an image file client-side using HTML5 Canvas
- * so smartphone photos (often 5-10 MB) upload rapidly as crisp WebP/JPEG assets.
+ * so smartphone photos (often 5-10 MB) upload and load rapidly as crisp WebP assets.
  */
 export async function processImageFile(
   file: File,
@@ -60,6 +60,8 @@ export async function processImageFile(
     throw new Error('Browser canvas context is unavailable for image processing.');
   }
 
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.save();
   ctx.translate(canvas.width / 2, canvas.height / 2);
   ctx.rotate((turns * Math.PI) / 2);
@@ -71,7 +73,7 @@ export async function processImageFile(
   }
 
   const targetMime = file.type === 'image/png' && !options.optimize ? 'image/png' : 'image/webp';
-  const quality = options.optimize ? 0.8 : 0.92;
+  const quality = options.optimize ? 0.76 : 0.92;
 
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(

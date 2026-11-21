@@ -210,7 +210,7 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filtered.map((project) => {
+          {filtered.map((project, idx) => {
             const isBusy = busyId === project.id;
             const thumb = project.imageUrls?.[0];
             const app = normalizePhotoAppearance(project.photoAppearance);
@@ -235,6 +235,7 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
                       <FastImage
                         src={thumb}
                         alt={project.title}
+                        priority={idx < 6}
                         darkBg={isBlueprint}
                         style={filterCss ? { filter: filterCss } : undefined}
                         className={`w-full h-full ${

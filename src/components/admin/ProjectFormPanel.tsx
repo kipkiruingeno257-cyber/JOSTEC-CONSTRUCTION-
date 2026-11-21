@@ -606,7 +606,7 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
                   />
                   <Sparkles className="w-3.5 h-3.5 text-orange-600 shrink-0" />
                   <span>
-                    <strong>Auto-Optimize Photos</strong> (Fast WebP · Max 1440px for rapid loading)
+                    <strong>Auto-Optimize Photos</strong> (Fast WebP · Max 1200px for rapid gallery loading)
                   </span>
                 </label>
 

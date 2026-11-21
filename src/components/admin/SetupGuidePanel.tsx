@@ -1,7 +1,52 @@
 import React from 'react';
-import { CheckCircle2, Database, ImagePlus, Link2, Server, ShieldCheck, Terminal } from 'lucide-react';
+import {
+  CheckCircle2,
+  ClipboardCheck,
+  Database,
+  Gauge,
+  ImagePlus,
+  Link2,
+  Lock,
+  Server,
+  ShieldCheck,
+  Terminal,
+} from 'lucide-react';
 import { activeFirebaseConfig, isFirebaseConfigured } from '../../lib/firebase';
 import { BOOTSTRAPPED_ADMIN_EMAIL } from '../../types';
+
+const FUNCTIONAL_REQUIREMENTS = [
+  'Public Homepage Hero with direct Contact Us & View Our Projects calls to action',
+  'About Us section covering company profile, lead engineer credentials, mission & vision',
+  '9 Specialized Service cards (Building Construction, Welding, Metal Fabrication, Gate Installation, Sliding Gates, Swing Gates, Steel Doors & Windows, Perimeter Fencing, Repairs & Maintenance)',
+  'Dynamic Project Gallery synced live from Firestore & App Server with category filtering, lightbox inspection, and keyboard navigation',
+  'Why Choose Us pillars & Admin-managed Verified Client Testimonials',
+  'Contact & Quote section with Phone, WhatsApp, Email, Contact Form persistence & interactive Google Maps',
+  'Footer Admin Login icon button routing directly to protected /admin Owner Portal',
+  'Admin Dashboard with Overview KPIs, Multi-Source Image Upload (Mobile Camera, Desktop, Clipboard Paste, Direct URLs), Draft/Publish/Unpublish/Edit/Delete workflows & Photo Appearance Studio',
+];
+
+const NON_FUNCTIONAL_REQUIREMENTS = [
+  {
+    title: 'Performance & Fast Image Delivery',
+    detail:
+      'Client-side WebP compression (max 1200px), eager pre-decoding for top gallery covers, immutable 1-year media caching headers, RAM-cached public portfolio API, and parallel 3-stream uploads.',
+  },
+  {
+    title: 'Security & Access Control',
+    detail:
+      'Firebase Auth RBAC + Firestore security rules validation, HttpOnly HMAC-signed local session cookies, server-side scrypt passcode hashing, magic-byte image inspection, and 10 MB / 12-file caps.',
+  },
+  {
+    title: 'Reliability & Fault Tolerance',
+    detail:
+      'Dual-mode persistence (Cloud Firestore + Standalone App Media Server), React ErrorBoundary protection, structured permission error reporting, and non-blocking gallery loading fallbacks.',
+  },
+  {
+    title: 'Usability, Accessibility & Responsiveness',
+    detail:
+      'Mobile-first layouts, high-contrast Navy/Orange/White/Charcoal typography, ARIA dialog/tablist semantics, keyboard Escape/Arrow lightbox controls, and live appearance previews.',
+  },
+];
 
 export const SetupGuidePanel: React.FC = () => {
   return (
@@ -25,8 +70,8 @@ export const SetupGuidePanel: React.FC = () => {
               <span>App Media Server</span>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Default upload target. Compresses photos to WebP (max 1600px) in the browser and
-              stores them securely on the Express server (<code className="font-mono">/api/media/*</code>).
+              Default upload target. Compresses photos to WebP (max 1200px) in the browser and
+              stores them securely on the Express server (<code className="font-mono">/api/media/*</code>) with 1-year immutable caching.
             </p>
           </div>
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-md space-y-1.5">
@@ -48,6 +93,59 @@ export const SetupGuidePanel: React.FC = () => {
               Sign in with your private local workshop passcode at <code className="font-mono">/admin</code> to
               save projects, reviews, and photos directly on the app server with zero Firebase dependency.
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* System Specifications: Functional & Non-Functional Requirements */}
+      <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-6">
+        <div className="flex items-center gap-2.5 pb-4 border-b border-slate-200">
+          <ClipboardCheck className="w-5 h-5 text-orange-600" />
+          <div>
+            <h3 className="font-display text-lg font-bold text-[#0B1B2B]">
+              System Requirements Specification
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Complete functional capabilities and non-functional engineering standards built into this platform.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              Functional Requirements
+            </h4>
+            <ul className="space-y-2.5 text-xs sm:text-sm text-slate-700">
+              {FUNCTIONAL_REQUIREMENTS.map((item) => (
+                <li key={item} className="flex items-start gap-2.5 bg-slate-50 border border-slate-200 rounded-md p-3">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <Gauge className="w-4 h-4 text-orange-600" />
+              Non-Functional Requirements
+            </h4>
+            <div className="space-y-3">
+              {NON_FUNCTIONAL_REQUIREMENTS.map((req) => (
+                <div
+                  key={req.title}
+                  className="bg-slate-50 border border-slate-200 rounded-md p-4 space-y-1"
+                >
+                  <div className="flex items-center gap-2 font-semibold text-sm text-[#0B1B2B]">
+                    <Lock className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                    <span>{req.title}</span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">{req.detail}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

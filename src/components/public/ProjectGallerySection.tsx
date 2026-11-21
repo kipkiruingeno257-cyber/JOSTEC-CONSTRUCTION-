@@ -21,12 +21,27 @@ import {
 } from '../../utils/photoAppearance';
 import { FastImage } from '../FastImage';
 
-function preloadProjectPhotos(urls: string[]) {
-  urls.slice(0, 6).forEach((url) => {
-    if (!url) return;
-    const img = new Image();
-    img.decoding = 'async';
-    img.src = url;
+const preloadedUrls = new Set<string>();
+
+function preloadImageUrl(url: string, highPriority = false) {
+  if (!url || preloadedUrls.has(url)) return;
+  preloadedUrls.add(url);
+  const img = new Image();
+  img.decoding = 'async';
+  if ('fetchPriority' in img && highPriority) {
+    (img as HTMLImageElement & { fetchPriority?: string }).fetchPriority = 'high';
+  }
+  img.src = url;
+  if (typeof img.decode === 'function') {
+    img.decode().catch(() => {
+      // Ignore decode errors for fallback/offline URLs
+    });
+  }
+}
+
+function preloadProjectPhotos(urls: string[], limit = 6) {
+  urls.slice(0, limit).forEach((url, idx) => {
+    preloadImageUrl(url, idx === 0);
   });
 }
 
@@ -41,6 +56,8 @@ export const ProjectGallerySection: React.FC = () => {
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
+  const [timedOut, setTimedOut] = useState(false);
+
   useEffect(() => {
     let mounted = true;
     fetchLocalPublicPortfolio().then((res) => {
@@ -48,6 +65,10 @@ export const ProjectGallerySection: React.FC = () => {
       setLocalProjects(res.projects);
       setLocalLoaded(true);
     });
+
+    const timeout = window.setTimeout(() => {
+      if (mounted) setTimedOut(true);
+    }, 1500);
 
     const unsubscribe = subscribePublishedProjects(
       (items) => {
@@ -64,11 +85,12 @@ export const ProjectGallerySection: React.FC = () => {
     );
     return () => {
       mounted = false;
+      window.clearTimeout(timeout);
       unsubscribe();
     };
   }, []);
 
-  const loading = !(firebaseLoaded || (localLoaded && localProjects.length > 0));
+  const loading = !(firebaseLoaded || (localLoaded && localProjects.length > 0) || (localLoaded && timedOut));
 
   const projects = useMemo(() => {
     const map: Record<string, ProjectRecord> = {};
@@ -93,11 +115,53 @@ export const ProjectGallerySection: React.FC = () => {
     return counts;
   }, [projects]);
 
+  // Warm and pre-decode visible project cover photos in background so scrolling/filtering is instant
+  useEffect(() => {
+    if (projects.length === 0) return;
+    projects.slice(0, 12).forEach((proj, idx) => {
+      const cover = proj.imageUrls?.[0];
+      if (cover) {
+        preloadImageUrl(cover, idx < 3);
+      }
+    });
+  }, [projects]);
+
+  // Preload adjacent photos when navigating inside the lightbox
+  useEffect(() => {
+    if (!activeProject?.imageUrls || activeProject.imageUrls.length <= 1) return;
+    const total = activeProject.imageUrls.length;
+    const nextUrl = activeProject.imageUrls[(activePhotoIndex + 1) % total];
+    const prevUrl = activeProject.imageUrls[(activePhotoIndex - 1 + total) % total];
+    if (nextUrl) preloadImageUrl(nextUrl, true);
+    if (prevUrl) preloadImageUrl(prevUrl, false);
+  }, [activeProject, activePhotoIndex]);
+
+  // Accessible keyboard controls (Escape, Left, Right) for lightbox modal
+  useEffect(() => {
+    if (!activeProject) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveProject(null);
+        setActivePhotoIndex(0);
+      } else if (e.key === 'ArrowRight' && activeProject.imageUrls?.length > 1) {
+        setActivePhotoIndex((prev) =>
+          prev === activeProject.imageUrls.length - 1 ? 0 : prev + 1
+        );
+      } else if (e.key === 'ArrowLeft' && activeProject.imageUrls?.length > 1) {
+        setActivePhotoIndex((prev) =>
+          prev === 0 ? activeProject.imageUrls.length - 1 : prev - 1
+        );
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeProject]);
+
   const openPreview = (project: ProjectRecord, photoIdx = 0) => {
     setActiveProject(project);
     setActivePhotoIndex(photoIdx);
     if (project.imageUrls && project.imageUrls.length > 1) {
-      preloadProjectPhotos(project.imageUrls);
+      preloadProjectPhotos(project.imageUrls, 8);
     }
   };
 
@@ -240,7 +304,7 @@ export const ProjectGallerySection: React.FC = () => {
         {/* Dynamic Project Grid */}
         {!loading && !loadError && filteredProjects.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 items-start">
-            {filteredProjects.map((project) => {
+            {filteredProjects.map((project, idx) => {
               const coverUrl = project.imageUrls?.[0] ?? '';
               const imgKey = `${project.id}_0`;
               const hasValidImage = Boolean(coverUrl) && !failedImages[imgKey];
@@ -270,6 +334,7 @@ export const ProjectGallerySection: React.FC = () => {
                       <FastImage
                         src={coverUrl}
                         alt={project.title}
+                        priority={idx < 6}
                         darkBg={isBlueprint}
                         onError={() => markImageFailed(imgKey)}
                         style={filterCss ? { filter: filterCss } : undefined}

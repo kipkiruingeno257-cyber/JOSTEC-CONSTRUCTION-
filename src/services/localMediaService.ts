@@ -194,20 +194,40 @@ export async function logoutLocalAdmin(): Promise<void> {
   await fetch('/api/local/logout', { method: 'POST', credentials: 'include' });
 }
 
-export async function fetchLocalPublicPortfolio(): Promise<{
+type PublicPortfolioResponse = {
   projects: ProjectRecord[];
   testimonials: TestimonialRecord[];
-}> {
-  try {
-    const res = await fetch('/api/local/portfolio');
-    if (!res.ok) return { projects: [], testimonials: [] };
-    return (await res.json()) as {
-      projects: ProjectRecord[];
-      testimonials: TestimonialRecord[];
-    };
-  } catch {
-    return { projects: [], testimonials: [] };
+};
+
+let portfolioInflight: Promise<PublicPortfolioResponse> | null = null;
+let portfolioCache: { data: PublicPortfolioResponse; ts: number } | null = null;
+
+export function invalidateLocalPortfolioCache(): void {
+  portfolioInflight = null;
+  portfolioCache = null;
+}
+
+export async function fetchLocalPublicPortfolio(): Promise<PublicPortfolioResponse> {
+  if (portfolioCache && Date.now() - portfolioCache.ts < 1500) {
+    return portfolioCache.data;
   }
+  if (portfolioInflight) {
+    return portfolioInflight;
+  }
+  portfolioInflight = (async () => {
+    try {
+      const res = await fetch('/api/local/portfolio');
+      if (!res.ok) return { projects: [], testimonials: [] };
+      const data = (await res.json()) as PublicPortfolioResponse;
+      portfolioCache = { data, ts: Date.now() };
+      return data;
+    } catch {
+      return { projects: [], testimonials: [] };
+    } finally {
+      portfolioInflight = null;
+    }
+  })();
+  return portfolioInflight;
 }
 
 export async function fetchLocalAdminData(): Promise<{
@@ -248,7 +268,9 @@ export async function createLocalProject(payload: {
     const b = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(b.error || 'Failed to save local project.');
   }
-  return (await res.json()) as ProjectRecord;
+  const created = (await res.json()) as ProjectRecord;
+  invalidateLocalPortfolioCache();
+  return created;
 }
 
 export async function updateLocalProject(
@@ -279,6 +301,7 @@ export async function updateLocalProject(
   if (removedStoragePaths.length > 0) {
     await deleteAppServerMedia(removedStoragePaths);
   }
+  invalidateLocalPortfolioCache();
   return (await res.json()) as ProjectRecord;
 }
 
@@ -290,6 +313,7 @@ export async function deleteLocalProject(id: string): Promise<void> {
   if (!res.ok) {
     throw new Error('Failed to delete local project.');
   }
+  invalidateLocalPortfolioCache();
 }
 
 export async function createLocalTestimonial(payload: {
@@ -307,6 +331,7 @@ export async function createLocalTestimonial(payload: {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Failed to create local testimonial.');
+  invalidateLocalPortfolioCache();
   return (await res.json()) as TestimonialRecord;
 }
 
@@ -328,6 +353,7 @@ export async function updateLocalTestimonial(
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Failed to update local testimonial.');
+  invalidateLocalPortfolioCache();
   return (await res.json()) as TestimonialRecord;
 }
 
@@ -337,6 +363,7 @@ export async function deleteLocalTestimonial(id: string): Promise<void> {
     credentials: 'include',
   });
   if (!res.ok) throw new Error('Failed to delete local testimonial.');
+  invalidateLocalPortfolioCache();
 }
 
 export async function submitLocalInquiry(payload: {
