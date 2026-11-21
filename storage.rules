@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    function isAdmin() {
+      return request.auth != null &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email == 'kipkiruingeno257@gmail.com';
+    }
+
+    // Project photographs uploaded by verified administrators
+    match /projects/{projectId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin() &&
+        projectId.matches('^[a-zA-Z0-9_\\-]{1,128}$') &&
+        fileName.matches('^[a-zA-Z0-9_.\\-]{1,200}$') &&
+        request.resource != null &&
+        request.resource.size <= 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(jpeg|jpg|png|webp|avif)');
+      allow delete: if isAdmin();
+    }
+  }
+}

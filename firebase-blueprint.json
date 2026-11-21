@@ -1,0 +1,269 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "Construction engineering or metal fabrication project showcased in the public gallery and managed in the admin dashboard.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Project display title.",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "description": "Engineering summary, materials, and scope of work.",
+          "minLength": 10,
+          "maxLength": 2000
+        },
+        "category": {
+          "type": "string",
+          "description": "Engineering service category for gallery filtering.",
+          "enum": [
+            "Building Construction",
+            "Welding Services",
+            "Metal Fabrication",
+            "Gate Installation",
+            "Sliding Gates",
+            "Swing Gates",
+            "Steel Doors & Windows",
+            "Perimeter Fencing",
+            "Repairs & Maintenance"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "description": "Project site city or industrial zone.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "completionYear": {
+          "type": "string",
+          "description": "Year the project was completed.",
+          "minLength": 0,
+          "maxLength": 10
+        },
+        "imageUrls": {
+          "type": "array",
+          "description": "Ordered list of Firebase Storage download URLs for project photographs."
+        },
+        "storagePaths": {
+          "type": "array",
+          "description": "Corresponding Firebase Storage object paths for cleanup on deletion."
+        },
+        "status": {
+          "type": "string",
+          "description": "Publication visibility state.",
+          "enum": ["draft", "published"]
+        },
+        "authorId": {
+          "type": "string",
+          "description": "UID of the administrator who created the project.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last modification."
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "category",
+        "imageUrls",
+        "storagePaths",
+        "status",
+        "authorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "Client review managed by the business owner and displayed on the public website.",
+      "type": "object",
+      "properties": {
+        "clientName": {
+          "type": "string",
+          "description": "Full name of the client or project owner.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "clientRole": {
+          "type": "string",
+          "description": "Role and organization of the client.",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "projectType": {
+          "type": "string",
+          "description": "Type of work delivered for this client.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "quote": {
+          "type": "string",
+          "description": "Verified customer feedback and outcome summary.",
+          "minLength": 10,
+          "maxLength": 1000
+        },
+        "rating": {
+          "type": "number",
+          "description": "Star rating between 1 and 5."
+        },
+        "status": {
+          "type": "string",
+          "description": "Display status on the public site.",
+          "enum": ["published", "hidden"]
+        },
+        "authorId": {
+          "type": "string",
+          "description": "UID of the administrator who created the testimonial.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last modification."
+        }
+      },
+      "required": [
+        "clientName",
+        "clientRole",
+        "projectType",
+        "quote",
+        "rating",
+        "status",
+        "authorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Inquiry": {
+      "title": "Inquiry",
+      "description": "Customer quote or consultation inquiry submitted from the public contact form.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Full name of the prospective client.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "description": "Client telephone or WhatsApp number.",
+          "minLength": 6,
+          "maxLength": 30
+        },
+        "email": {
+          "type": "string",
+          "description": "Client email address.",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "serviceType": {
+          "type": "string",
+          "description": "Requested service discipline.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "message": {
+          "type": "string",
+          "description": "Project scope, dimensions, and site details.",
+          "minLength": 10,
+          "maxLength": 2000
+        },
+        "status": {
+          "type": "string",
+          "description": "Lead workflow status.",
+          "enum": ["new", "reviewed", "archived"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of submission."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last status update."
+        }
+      },
+      "required": [
+        "name",
+        "phone",
+        "email",
+        "serviceType",
+        "message",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized business administrator record keyed by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Verified Google account email.",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Administrator display name.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "description": "Access role.",
+          "enum": ["admin"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin access was granted."
+        }
+      },
+      "required": ["email", "displayName", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Publicly readable (when status == published) and admin-managed construction engineering projects."
+    },
+    "/testimonials/{testimonialId}": {
+      "schema": { "$ref": "#/entities/Testimonial" },
+      "description": "Publicly readable (when status == published) and admin-managed customer reviews."
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/Inquiry" },
+      "description": "PII-isolated customer inquiries; public create-only with status == new, admin-only read/update/delete."
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Authorized administrator directory; admin-only read and write."
+    }
+  }
+}

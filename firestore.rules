@@ -1,0 +1,223 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'kipkiruingeno257@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() ||
+        (isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidCategory(cat) {
+      return cat in [
+        'Building Construction',
+        'Welding Services',
+        'Metal Fabrication',
+        'Gate Installation',
+        'Sliding Gates',
+        'Swing Gates',
+        'Steel Doors & Windows',
+        'Perimeter Fencing',
+        'Repairs & Maintenance'
+      ];
+    }
+
+    function isValidUrlArray(arr) {
+      return arr is list &&
+        arr.size() <= 12 &&
+        (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 2048));
+    }
+
+    function isValidStoragePathArray(arr) {
+      return arr is list &&
+        arr.size() <= 12 &&
+        (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 512));
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidProject(data) {
+      return isValidString(data.title, 3, 120) &&
+        isValidString(data.description, 10, 2000) &&
+        isValidCategory(data.category) &&
+        (!('location' in data) || isValidString(data.location, 0, 120)) &&
+        (!('completionYear' in data) || isValidString(data.completionYear, 0, 10)) &&
+        isValidUrlArray(data.imageUrls) &&
+        isValidStoragePathArray(data.storagePaths) &&
+        data.imageUrls.size() == data.storagePaths.size() &&
+        data.status in ['draft', 'published'] &&
+        isValidId(data.authorId) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTestimonial(data) {
+      return isValidString(data.clientName, 2, 100) &&
+        isValidString(data.clientRole, 2, 120) &&
+        isValidString(data.projectType, 2, 80) &&
+        isValidString(data.quote, 10, 1000) &&
+        data.rating is int && data.rating >= 1 && data.rating <= 5 &&
+        data.status in ['published', 'hidden'] &&
+        isValidId(data.authorId) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidInquiry(data) {
+      return isValidString(data.name, 2, 100) &&
+        isValidString(data.phone, 6, 30) &&
+        isValidString(data.email, 5, 120) &&
+        isValidString(data.serviceType, 2, 80) &&
+        isValidString(data.message, 10, 2000) &&
+        data.status in ['new', 'reviewed', 'archived'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminUser(data) {
+      return isValidString(data.email, 5, 120) &&
+        isValidString(data.displayName, 2, 100) &&
+        data.role == 'admin' &&
+        data.createdAt is timestamp;
+    }
+
+    // --- Collection: projects ---
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId) && (existing().status == 'published' || isAdmin());
+      allow list: if existing().status == 'published' || isBootstrappedAdmin();
+
+      allow create: if isVerifiedUser() &&
+        isValidId(projectId) &&
+        incoming().keys().hasAll(['title', 'description', 'category', 'imageUrls', 'storagePaths', 'status', 'authorId', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['title', 'description', 'category', 'location', 'completionYear', 'imageUrls', 'storagePaths', 'status', 'authorId', 'createdAt', 'updatedAt']) &&
+        isValidProject(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+
+      allow update: if isVerifiedUser() &&
+        isValidId(projectId) &&
+        isValidProject(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin() &&
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'location', 'completionYear', 'imageUrls', 'storagePaths', 'status', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+        );
+
+      allow delete: if isVerifiedUser() && isValidId(projectId) && isAdmin();
+    }
+
+    // --- Collection: testimonials ---
+    match /testimonials/{testimonialId} {
+      allow get: if isValidId(testimonialId) && (existing().status == 'published' || isAdmin());
+      allow list: if existing().status == 'published' || isBootstrappedAdmin();
+
+      allow create: if isVerifiedUser() &&
+        isValidId(testimonialId) &&
+        incoming().keys().hasAll(['clientName', 'clientRole', 'projectType', 'quote', 'rating', 'status', 'authorId', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['clientName', 'clientRole', 'projectType', 'quote', 'rating', 'status', 'authorId', 'createdAt', 'updatedAt']) &&
+        isValidTestimonial(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+
+      allow update: if isVerifiedUser() &&
+        isValidId(testimonialId) &&
+        isValidTestimonial(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin() &&
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['clientName', 'clientRole', 'projectType', 'quote', 'rating', 'status', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+        );
+
+      allow delete: if isVerifiedUser() && isValidId(testimonialId) && isAdmin();
+    }
+
+    // --- Collection: inquiries (PII Isolated) ---
+    match /inquiries/{inquiryId} {
+      allow get: if isValidId(inquiryId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isValidId(inquiryId) &&
+        incoming().keys().hasAll(['name', 'phone', 'email', 'serviceType', 'message', 'status', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['name', 'phone', 'email', 'serviceType', 'message', 'status', 'createdAt', 'updatedAt']) &&
+        isValidInquiry(incoming()) &&
+        incoming().status == 'new' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser() &&
+        isValidId(inquiryId) &&
+        isValidInquiry(incoming()) &&
+        incoming().name == existing().name &&
+        incoming().phone == existing().phone &&
+        incoming().email == existing().email &&
+        incoming().serviceType == existing().serviceType &&
+        incoming().message == existing().message &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isVerifiedUser() && isValidId(inquiryId) && isAdmin();
+    }
+
+    // --- Collection: admins ---
+    match /admins/{adminUid} {
+      allow get: if isValidId(adminUid) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isVerifiedUser() &&
+        isValidId(adminUid) &&
+        incoming().keys().hasAll(['email', 'displayName', 'role', 'createdAt']) &&
+        incoming().keys().hasOnly(['email', 'displayName', 'role', 'createdAt']) &&
+        isValidAdminUser(incoming()) &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(adminUid) && isAdmin() && adminUid != request.auth.uid;
+    }
+  }
+}
