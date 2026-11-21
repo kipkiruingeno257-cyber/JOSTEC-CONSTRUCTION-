@@ -305,8 +305,12 @@ export const ProjectGallerySection: React.FC = () => {
         {!loading && !loadError && filteredProjects.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 items-start">
             {filteredProjects.map((project, idx) => {
-              const coverUrl = project.imageUrls?.[0] ?? '';
-              const imgKey = `${project.id}_0`;
+              const firstValidIdx = (project.imageUrls || []).findIndex(
+                (u, imgIdx) => Boolean(u) && !failedImages[`${project.id}_${imgIdx}`]
+              );
+              const coverIdx = firstValidIdx >= 0 ? firstValidIdx : 0;
+              const coverUrl = project.imageUrls?.[coverIdx] ?? '';
+              const imgKey = `${project.id}_${coverIdx}`;
               const hasValidImage = Boolean(coverUrl) && !failedImages[imgKey];
               const app = normalizePhotoAppearance(project.photoAppearance);
               const aspectClass = getAspectClass(app.aspectRatio);
@@ -327,7 +331,7 @@ export const ProjectGallerySection: React.FC = () => {
                 >
                   <button
                     type="button"
-                    onClick={() => openPreview(project, 0)}
+                    onClick={() => openPreview(project, coverIdx)}
                     className={`relative ${aspectClass} w-full overflow-hidden ${frameClasses.viewportBg} text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-orange-600`}
                   >
                     {hasValidImage ? (
@@ -482,18 +486,44 @@ export const ProjectGallerySection: React.FC = () => {
             </div>
 
             {/* Active Image Viewport */}
-            <div className="relative bg-slate-900 aspect-[16/10] flex items-center justify-center">
+            <div className="relative bg-[#0B1B2B] aspect-[16/10] flex items-center justify-center overflow-hidden">
               {activeProject.imageUrls && activeProject.imageUrls.length > 0 ? (
                 <>
-                  <img
-                    src={activeProject.imageUrls[activePhotoIndex]}
-                    alt={`${activeProject.title} photograph ${activePhotoIndex + 1}`}
-                    decoding="sync"
-                    fetchPriority="high"
-                    referrerPolicy="no-referrer"
-                    style={activeFilterCss ? { filter: activeFilterCss } : undefined}
-                    className="max-h-full max-w-full object-contain"
-                  />
+                  {(() => {
+                    const activeUrl = activeProject.imageUrls[activePhotoIndex] ?? '';
+                    const activeKey = `${activeProject.id}_${activePhotoIndex}`;
+                    const activeFailed = !activeUrl || Boolean(failedImages[activeKey]);
+
+                    if (activeFailed) {
+                      return (
+                        <div className="w-full h-full bg-gradient-to-br from-[#0F2338] to-[#081522] flex flex-col items-center justify-center p-8 text-center">
+                          <Building2 className="w-12 h-12 text-orange-400 mb-3" />
+                          <p className="font-display text-base font-semibold text-white mb-1">
+                            {activeProject.title}
+                          </p>
+                          <p className="text-xs text-slate-300 max-w-md leading-relaxed">
+                            This photograph file could not be loaded from its stored link. If you
+                            are the site owner, open the Admin Dashboard and re-upload using{' '}
+                            <strong className="text-orange-400">Cloud Database WebP</strong> so it
+                            displays on every host.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <img
+                        src={activeUrl}
+                        alt={`${activeProject.title} photograph ${activePhotoIndex + 1}`}
+                        decoding="sync"
+                        fetchPriority="high"
+                        referrerPolicy="no-referrer"
+                        onError={() => markImageFailed(activeKey)}
+                        style={activeFilterCss ? { filter: activeFilterCss } : undefined}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    );
+                  })()}
                   {activeProject.imageUrls.length > 1 && (
                     <>
                       <button
@@ -533,28 +563,37 @@ export const ProjectGallerySection: React.FC = () => {
             {/* Thumbnails */}
             {activeProject.imageUrls && activeProject.imageUrls.length > 1 && (
               <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2 overflow-x-auto">
-                {activeProject.imageUrls.map((url, idx) => (
-                  <button
-                    key={url + idx}
-                    type="button"
-                    onClick={() => setActivePhotoIndex(idx)}
-                    className={`w-16 h-12 rounded overflow-hidden border-2 shrink-0 cursor-pointer ${
-                      idx === activePhotoIndex
-                        ? 'border-orange-600'
-                        : 'border-transparent opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    <img
-                      src={url}
-                      alt={`Thumbnail ${idx + 1}`}
-                      loading="lazy"
-                      decoding="async"
-                      referrerPolicy="no-referrer"
-                      style={activeFilterCss ? { filter: activeFilterCss } : undefined}
-                      className="w-full h-full object-cover"
-                    />
-                  </button>
-                ))}
+                {activeProject.imageUrls.map((url, idx) => {
+                  const thumbKey = `${activeProject.id}_${idx}`;
+                  const thumbFailed = !url || Boolean(failedImages[thumbKey]);
+                  return (
+                    <button
+                      key={url + idx}
+                      type="button"
+                      onClick={() => setActivePhotoIndex(idx)}
+                      className={`w-16 h-12 rounded overflow-hidden border-2 shrink-0 cursor-pointer bg-[#0B1B2B] flex items-center justify-center ${
+                        idx === activePhotoIndex
+                          ? 'border-orange-600'
+                          : 'border-transparent opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      {thumbFailed ? (
+                        <Building2 className="w-4 h-4 text-orange-400" />
+                      ) : (
+                        <img
+                          src={url}
+                          alt={`Thumbnail ${idx + 1}`}
+                          loading="lazy"
+                          decoding="async"
+                          referrerPolicy="no-referrer"
+                          onError={() => markImageFailed(thumbKey)}
+                          style={activeFilterCss ? { filter: activeFilterCss } : undefined}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
 

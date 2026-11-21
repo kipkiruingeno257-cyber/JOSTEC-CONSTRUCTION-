@@ -302,7 +302,12 @@ export async function deleteStorageObjects(storagePaths: string[]): Promise<void
   }
 
   const firebasePaths = storagePaths.filter(
-    (p) => typeof p === 'string' && p.length > 0 && !p.startsWith('local:') && p !== 'external'
+    (p) =>
+      typeof p === 'string' &&
+      p.length > 0 &&
+      !p.startsWith('local:') &&
+      p !== 'external' &&
+      p !== 'embedded:webp'
   );
   if (!isFirebaseConfigured || !storage || firebasePaths.length === 0) return;
   await Promise.allSettled(

@@ -38,7 +38,7 @@ import {
   type ProjectRecord,
   type ProjectStatus,
 } from '../../types';
-import { formatBytes, processImageFile } from '../../utils/imageProcessor';
+import { encodeEmbeddedCloudWebP, formatBytes, processImageFile } from '../../utils/imageProcessor';
 import {
   getImageFilterCss,
   loadDefaultPhotoAppearance,
@@ -46,7 +46,7 @@ import {
 } from '../../utils/photoAppearance';
 import { PhotoAppearanceEditor } from './PhotoAppearanceEditor';
 
-type UploadDestination = 'server' | 'firebase';
+type UploadDestination = 'cloud-webp' | 'server' | 'firebase';
 
 interface UnifiedPhotoItem {
   key: string;
@@ -85,7 +85,7 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
 
   // Advanced image ingestion controls & appearance studio
   const [ingestTab, setIngestTab] = useState<'device' | 'url'>('device');
-  const [uploadDestination, setUploadDestination] = useState<UploadDestination>('server');
+  const [uploadDestination, setUploadDestination] = useState<UploadDestination>('cloud-webp');
   const [optimizeImages, setOptimizeImages] = useState(true);
   const [urlInputText, setUrlInputText] = useState('');
   const [photoAppearance, setPhotoAppearance] = useState<PhotoAppearance>(() =>
@@ -97,6 +97,7 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
   const [activeFileName, setActiveFileName] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [brokenPreviewKeys, setBrokenPreviewKeys] = useState<Record<string, boolean>>({});
 
   const photosRef = useRef<UnifiedPhotoItem[]>([]);
   photosRef.current = photos;
@@ -138,6 +139,7 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
       setRemovedStoragePaths([]);
     }
     setUrlInputText('');
+    setBrokenPreviewKeys({});
     setErrorMsg(null);
     setUploadProgress(0);
     setActiveFileName('');
@@ -308,19 +310,54 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
         const effectiveDestination: UploadDestination =
           mode === 'local' ? 'server' : uploadDestination;
 
-        if (effectiveDestination === 'server') {
-          uploadedResults = await uploadImagesToAppServer(
-            targetProjectId,
-            localItems.map((item) => ({
-              file: item.file!,
-              rotateQuarterTurns: item.rotateTurns ?? 0,
-            })),
-            { optimize: optimizeImages },
-            (pct, fileName) => {
-              setUploadProgress(pct);
-              setActiveFileName(fileName);
-            }
+        const encodeCloudWebpBatch = async () => {
+          const existingEmbeddedChars = photos
+            .filter((p) => p.kind !== 'local' && p.previewUrl.startsWith('data:'))
+            .reduce((sum, p) => sum + p.previewUrl.length, 0);
+          const remainingBudget = Math.max(220_000, 740_000 - existingEmbeddedChars);
+          const maxCharsPerPhoto = Math.max(
+            48_000,
+            Math.min(240_000, Math.floor(remainingBudget / Math.max(localItems.length, 1)))
           );
+
+          const out: { url: string; storagePath: string }[] = [];
+          for (let i = 0; i < localItems.length; i++) {
+            const item = localItems[i];
+            setActiveFileName(item.file!.name);
+            const encoded = await encodeEmbeddedCloudWebP(item.file!, {
+              maxChars: maxCharsPerPhoto,
+              rotateQuarterTurns: item.rotateTurns ?? 0,
+            });
+            out.push({ url: encoded.dataUrl, storagePath: 'embedded:webp' });
+            setUploadProgress(Math.round(((i + 1) / localItems.length) * 100));
+          }
+          return out;
+        };
+
+        if (effectiveDestination === 'cloud-webp') {
+          uploadedResults = await encodeCloudWebpBatch();
+        } else if (effectiveDestination === 'server') {
+          try {
+            uploadedResults = await uploadImagesToAppServer(
+              targetProjectId,
+              localItems.map((item) => ({
+                file: item.file!,
+                rotateQuarterTurns: item.rotateTurns ?? 0,
+              })),
+              { optimize: optimizeImages },
+              (pct, fileName) => {
+                setUploadProgress(pct);
+                setActiveFileName(fileName);
+              }
+            );
+          } catch (serverErr) {
+            if (mode === 'firebase') {
+              // Automatically fall back to portable Cloud WebP on static hosts like Vercel
+              uploadedResults = await encodeCloudWebpBatch();
+            } else {
+              throw serverErr;
+            }
+          }
         } else {
           const preparedFiles: File[] = [];
           for (const item of localItems) {
@@ -619,8 +656,11 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
                       onChange={(e) => setUploadDestination(e.target.value as UploadDestination)}
                       className="px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded text-xs font-medium text-[#0B1B2B] focus:outline-none focus:border-orange-600"
                     >
-                      <option value="server">App Media Server (No Firebase Storage needed)</option>
+                      <option value="cloud-webp">
+                        Cloud Database WebP (Works on Vercel &amp; Everywhere)
+                      </option>
                       <option value="firebase">Firebase Storage Bucket</option>
+                      <option value="server">App Media Server (Express host only)</option>
                     </select>
                   </div>
                 )}
@@ -735,24 +775,39 @@ export const ProjectFormPanel: React.FC<ProjectFormPanelProps> = ({
                   }`}
                 >
                   <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
-                    <img
-                      src={photo.previewUrl}
-                      alt={photo.label}
-                      referrerPolicy="no-referrer"
-                      style={{
-                        ...(photo.rotateTurns
-                          ? { transform: `rotate(${photo.rotateTurns * 90}deg)` }
-                          : {}),
-                        ...(getImageFilterCss(photoAppearance)
-                          ? { filter: getImageFilterCss(photoAppearance) }
-                          : {}),
-                      }}
-                      className="w-full h-full object-cover transition-transform duration-150"
-                    />
+                    {brokenPreviewKeys[photo.key] ? (
+                      <div className="w-full h-full bg-amber-50 border-b border-amber-200 flex flex-col items-center justify-center p-3 text-center">
+                        <AlertCircle className="w-6 h-6 text-amber-600 mb-1.5" />
+                        <p className="text-[11px] font-semibold text-amber-900">
+                          Image Unreachable
+                        </p>
+                        <p className="text-[10px] text-amber-800 mt-0.5 leading-tight">
+                          Remove this item and re-upload using Cloud Database WebP.
+                        </p>
+                      </div>
+                    ) : (
+                      <img
+                        src={photo.previewUrl}
+                        alt={photo.label}
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setBrokenPreviewKeys((prev) => ({ ...prev, [photo.key]: true }))
+                        }
+                        style={{
+                          ...(photo.rotateTurns
+                            ? { transform: `rotate(${photo.rotateTurns * 90}deg)` }
+                            : {}),
+                          ...(getImageFilterCss(photoAppearance)
+                            ? { filter: getImageFilterCss(photoAppearance) }
+                            : {}),
+                        }}
+                        className="w-full h-full object-cover transition-transform duration-150"
+                      />
+                    )}
                     <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#0B1B2B]/85 text-white text-[11px] font-mono tabular-nums">
                       {idx === 0 ? '#1 Cover' : `#${idx + 1}`}
                     </div>
-                    {photo.kind === 'existing' && (
+                    {photo.kind === 'existing' && !brokenPreviewKeys[photo.key] && (
                       <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-emerald-700/90 text-white text-[10px] font-medium inline-flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3" />
                         Saved

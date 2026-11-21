@@ -144,3 +144,101 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Failed to read compressed image data.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Encodes an image file as a compact data:image/webp;base64 URI guaranteed to fit
+ * within maxChars (so projects stored in Firestore display on Vercel, Firebase Hosting,
+ * mobile, and localhost without any external storage server).
+ */
+export async function encodeEmbeddedCloudWebP(
+  file: File,
+  options: { maxChars?: number; rotateQuarterTurns?: number } = {}
+): Promise<{ dataUrl: string; sizeChars: number; width: number; height: number }> {
+  const maxChars = options.maxChars ?? 175_000;
+  const turns = ((options.rotateQuarterTurns ?? 0) % 4 + 4) % 4;
+
+  const bitmap = await loadImageBitmap(file);
+  const srcWidth = bitmap.width;
+  const srcHeight = bitmap.height;
+
+  const dimensionSteps = [1080, 900, 720, 560];
+  const qualitySteps = [0.78, 0.66, 0.54, 0.42];
+
+  let lastDataUrl = '';
+  let lastW = srcWidth;
+  let lastH = srcHeight;
+
+  try {
+    for (const maxDim of dimensionSteps) {
+      const longest = Math.max(srcWidth, srcHeight);
+      const scale = longest > maxDim ? maxDim / longest : 1;
+      const targetW = Math.max(1, Math.round(srcWidth * scale));
+      const targetH = Math.max(1, Math.round(srcHeight * scale));
+
+      const swapAxes = turns === 1 || turns === 3;
+      const canvas = document.createElement('canvas');
+      canvas.width = swapAxes ? targetH : targetW;
+      canvas.height = swapAxes ? targetW : targetH;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Browser canvas context is unavailable for image compression.');
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((turns * Math.PI) / 2);
+      ctx.drawImage(bitmap, -targetW / 2, -targetH / 2, targetW, targetH);
+      ctx.restore();
+
+      for (const quality of qualitySteps) {
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (res) => {
+              if (res) {
+                resolve(res);
+                return;
+              }
+              canvas.toBlob(
+                (jpgRes) => {
+                  if (jpgRes) resolve(jpgRes);
+                  else reject(new Error('Failed to encode WebP/JPEG image.'));
+                },
+                'image/jpeg',
+                quality
+              );
+            },
+            'image/webp',
+            quality
+          );
+        });
+
+        const dataUrl = await blobToDataUrl(blob);
+        lastDataUrl = dataUrl;
+        lastW = canvas.width;
+        lastH = canvas.height;
+        if (dataUrl.length <= maxChars) {
+          return { dataUrl, sizeChars: dataUrl.length, width: lastW, height: lastH };
+        }
+      }
+    }
+  } finally {
+    if ('close' in bitmap && typeof bitmap.close === 'function') {
+      bitmap.close();
+    }
+  }
+
+  return { dataUrl: lastDataUrl, sizeChars: lastDataUrl.length, width: lastW, height: lastH };
+}
+

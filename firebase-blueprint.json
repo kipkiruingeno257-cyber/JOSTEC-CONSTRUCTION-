@@ -46,7 +46,7 @@
         },
         "imageUrls": {
           "type": "array",
-          "description": "Ordered list of Firebase Storage download URLs for project photographs."
+          "description": "Ordered list of HTTPS download URLs, server media URLs, or compressed embedded WebP data URLs for project photographs."
         },
         "storagePaths": {
           "type": "array",

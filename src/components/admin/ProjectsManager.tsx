@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
   Edit3,
   EyeOff,
@@ -53,6 +54,7 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
   const [appearanceTarget, setAppearanceTarget] = useState<ProjectRecord | null>(null);
   const [draftAppearance, setDraftAppearance] = useState<PhotoAppearance | null>(null);
   const [savingAppearance, setSavingAppearance] = useState(false);
+  const [brokenCoverIds, setBrokenCoverIds] = useState<Record<string, boolean>>({});
 
   const filtered = useMemo(() => {
     return projects.filter((p) => {
@@ -231,17 +233,34 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
                       isBlueprint ? 'border-white/10' : 'border-slate-200'
                     } overflow-hidden`}
                   >
-                    {thumb ? (
+                    {thumb && !brokenCoverIds[project.id] ? (
                       <FastImage
                         src={thumb}
                         alt={project.title}
                         priority={idx < 6}
                         darkBg={isBlueprint}
+                        onError={() =>
+                          setBrokenCoverIds((prev) => ({ ...prev, [project.id]: true }))
+                        }
                         style={filterCss ? { filter: filterCss } : undefined}
                         className={`w-full h-full ${
                           app.objectFit === 'contain' ? 'object-contain' : 'object-cover'
                         } ${posClass}`}
                       />
+                    ) : brokenCoverIds[project.id] ? (
+                      <div className="w-full h-full bg-amber-50 flex flex-col items-center justify-center p-4 text-center">
+                        <AlertTriangle className="w-6 h-6 text-amber-600 mb-1.5" />
+                        <p className="text-xs font-semibold text-amber-900">
+                          Photo file unreachable on this host
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => onEditProject(project)}
+                          className="mt-2 px-3 py-1 bg-orange-600 text-white text-[11px] font-semibold rounded hover:bg-orange-700 cursor-pointer"
+                        >
+                          Edit &amp; Re-upload Photo
+                        </button>
+                      </div>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
                         No photograph uploaded

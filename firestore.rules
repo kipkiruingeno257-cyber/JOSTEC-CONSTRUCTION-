@@ -59,7 +59,7 @@ service cloud.firestore {
     function isValidUrlArray(arr) {
       return arr is list &&
         arr.size() <= 12 &&
-        (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 2048));
+        (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 350000));
     }
 
     function isValidStoragePathArray(arr) {
