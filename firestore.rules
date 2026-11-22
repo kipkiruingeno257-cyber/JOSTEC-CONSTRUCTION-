@@ -141,6 +141,18 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidSiteImageSlot(slot) {
+      return slot in ['hero', 'service_construction', 'service_welding', 'service_perimeter'];
+    }
+
+    function isValidSiteImage(data) {
+      return isValidSiteImageSlot(data.slot) &&
+        isValidString(data.imageUrl, 1, 350000) &&
+        isValidString(data.storagePath, 0, 512) &&
+        (!('caption' in data) || isValidString(data.caption, 0, 160)) &&
+        data.updatedAt is timestamp;
+    }
+
     // --- Collection: projects ---
     match /projects/{projectId} {
       allow get: if isValidId(projectId) && (existing().status == 'published' || isAdmin());
@@ -273,6 +285,35 @@ service cloud.firestore {
         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']);
 
       allow delete: if isVerifiedUser() && isValidId(profileId) && profileId == 'main' && isAdmin();
+    }
+
+    // --- Collection: site_images ---
+    match /site_images/{slotId} {
+      allow get: if isValidId(slotId) && isValidSiteImageSlot(slotId);
+      allow list: if false;
+
+      allow create: if isVerifiedUser() &&
+        isValidId(slotId) &&
+        isValidSiteImageSlot(slotId) &&
+        incoming().keys().hasAll(['slot', 'imageUrl', 'storagePath', 'updatedAt']) &&
+        incoming().keys().hasOnly(['slot', 'imageUrl', 'storagePath', 'caption', 'updatedAt']) &&
+        isValidSiteImage(incoming()) &&
+        incoming().slot == slotId &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+
+      allow update: if isVerifiedUser() &&
+        isValidId(slotId) &&
+        isValidSiteImageSlot(slotId) &&
+        incoming().keys().hasAll(['slot', 'imageUrl', 'storagePath', 'updatedAt']) &&
+        incoming().keys().hasOnly(['slot', 'imageUrl', 'storagePath', 'caption', 'updatedAt']) &&
+        isValidSiteImage(incoming()) &&
+        incoming().slot == slotId &&
+        incoming().updatedAt == request.time &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['imageUrl', 'storagePath', 'caption', 'updatedAt']);
+
+      allow delete: if isVerifiedUser() && isValidId(slotId) && isValidSiteImageSlot(slotId) && isAdmin();
     }
   }
 }

@@ -12,6 +12,7 @@ import {
   Globe,
   HardHat,
   ImagePlus,
+  Images,
   KeyRound,
   LayoutDashboard,
   Lock,
@@ -37,6 +38,7 @@ import { ProfileManagerPanel } from '../components/admin/ProfileManagerPanel';
 import { ProjectFormPanel } from '../components/admin/ProjectFormPanel';
 import { ProjectsManager } from '../components/admin/ProjectsManager';
 import { SetupGuidePanel } from '../components/admin/SetupGuidePanel';
+import { SiteImagesPanel } from '../components/admin/SiteImagesPanel';
 import { TestimonialsManager } from '../components/admin/TestimonialsManager';
 import { useFirebase } from '../context/FirebaseContext';
 import { activeFirebaseConfig } from '../lib/firebase';
@@ -44,6 +46,7 @@ import {
   subscribeAllProjects,
   subscribeAllTestimonials,
   subscribeInquiries,
+  subscribeSiteImages,
   subscribeSiteProfile,
 } from '../services/firestoreService';
 import { fetchLocalAdminData } from '../services/localMediaService';
@@ -53,6 +56,8 @@ import {
   COMPANY_INFO,
   type InquiryRecord,
   type ProjectRecord,
+  type SiteImageRecord,
+  type SiteImageSlotId,
   type SiteProfileRecord,
   type TestimonialRecord,
 } from '../types';
@@ -60,6 +65,7 @@ import {
 type AdminTab =
   | 'overview'
   | 'profile'
+  | 'site-images'
   | 'upload'
   | 'projects'
   | 'appearance'
@@ -158,6 +164,7 @@ export const AdminPage: React.FC = () => {
   const [testimonials, setTestimonials] = useState<TestimonialRecord[]>([]);
   const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
   const [siteProfile, setSiteProfile] = useState<SiteProfileRecord | null>(null);
+  const [siteImages, setSiteImages] = useState<Partial<Record<SiteImageSlotId, SiteImageRecord>>>({});
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const notify = useCallback((type: 'success' | 'error', text: string) => {
@@ -178,6 +185,7 @@ export const AdminPage: React.FC = () => {
       setTestimonials(data.testimonials);
       setInquiries(data.inquiries);
       setSiteProfile(data.profile ?? null);
+      setSiteImages(data.siteImages ?? {});
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'Unable to load local admin data.');
     }
@@ -189,6 +197,7 @@ export const AdminPage: React.FC = () => {
       const unsubProjects = subscribeAllProjects(setProjects, undefined, uidFilter);
       const unsubTestimonials = subscribeAllTestimonials(setTestimonials, undefined, uidFilter);
       const unsubProfile = subscribeSiteProfile(setSiteProfile);
+      const unsubSiteImages = subscribeSiteImages(setSiteImages);
       const unsubInquiries = isBootstrappedAdmin
         ? subscribeInquiries(setInquiries)
         : () => {};
@@ -197,6 +206,7 @@ export const AdminPage: React.FC = () => {
         unsubProjects();
         unsubTestimonials();
         unsubProfile();
+        unsubSiteImages();
         unsubInquiries();
       };
     }
@@ -210,6 +220,7 @@ export const AdminPage: React.FC = () => {
     setTestimonials([]);
     setInquiries([]);
     setSiteProfile(null);
+    setSiteImages({});
   }, [activeAdminMode, isBootstrappedAdmin, user?.uid, refreshLocalData]);
 
   const stats = useMemo(() => {
@@ -773,6 +784,7 @@ export const AdminPage: React.FC = () => {
   const navItems: { id: AdminTab; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'profile', label: 'Profile & Bio', icon: UserCog },
+    { id: 'site-images', label: 'Site Images', icon: Images },
     { id: 'upload', label: editingProject ? 'Edit Project' : 'Upload Project', icon: ImagePlus },
     { id: 'projects', label: 'Project Gallery', icon: FolderKanban, badge: stats.totalProjects },
     { id: 'appearance', label: 'Photo Appearance', icon: SlidersHorizontal },
@@ -1068,7 +1080,7 @@ export const AdminPage: React.FC = () => {
                   <h2 className="font-display text-base font-bold text-[#0B1B2B]">
                     Recent Project Uploads
                   </h2>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     <button
                       type="button"
                       onClick={() => setActiveTab('profile')}
@@ -1076,6 +1088,14 @@ export const AdminPage: React.FC = () => {
                     >
                       <UserCog className="w-3.5 h-3.5 text-orange-600" />
                       Edit Profile &amp; Bio
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('site-images')}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0B1B2B] hover:text-orange-600 cursor-pointer"
+                    >
+                      <Images className="w-3.5 h-3.5 text-orange-600" />
+                      Site Images
                     </button>
                     <button
                       type="button"
@@ -1191,6 +1211,16 @@ export const AdminPage: React.FC = () => {
             <ProfileManagerPanel
               mode={activeAdminMode}
               profile={siteProfile}
+              onNotify={notify}
+              onLocalMutated={refreshLocalData}
+            />
+          )}
+
+          {/* Site Images Tab */}
+          {activeTab === 'site-images' && (
+            <SiteImagesPanel
+              mode={activeAdminMode}
+              siteImages={siteImages}
               onNotify={notify}
               onLocalMutated={refreshLocalData}
             />

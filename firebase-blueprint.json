@@ -307,6 +307,42 @@
         "avatarStoragePath",
         "updatedAt"
       ]
+    },
+    "SiteImage": {
+      "title": "SiteImage",
+      "description": "Custom admin-uploaded photograph for a specific public website visual slot (hero banner or service showcase card).",
+      "type": "object",
+      "properties": {
+        "slot": {
+          "type": "string",
+          "description": "Fixed visual slot identifier on the public website.",
+          "enum": ["hero", "service_construction", "service_welding", "service_perimeter"]
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "HTTPS download URL, server media path, or compressed WebP data URL.",
+          "minLength": 1,
+          "maxLength": 350000
+        },
+        "storagePath": {
+          "type": "string",
+          "description": "Storage path reference for cleanup on replacement.",
+          "minLength": 0,
+          "maxLength": 512
+        },
+        "caption": {
+          "type": "string",
+          "description": "Optional custom alt/caption label for this visual slot.",
+          "minLength": 0,
+          "maxLength": 160
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last modification."
+        }
+      },
+      "required": ["slot", "imageUrl", "storagePath", "updatedAt"]
     }
   },
   "firestore": {
@@ -329,6 +365,10 @@
     "/site_profile/{profileId}": {
       "schema": { "$ref": "#/entities/SiteProfile" },
       "description": "Publicly readable single-document engineer profile and bio (/site_profile/main); admin-only write."
+    },
+    "/site_images/{slotId}": {
+      "schema": { "$ref": "#/entities/SiteImage" },
+      "description": "Publicly readable admin-uploaded website showcase and hero photos keyed by fixed slot ID; admin-only write."
     }
   }
 }

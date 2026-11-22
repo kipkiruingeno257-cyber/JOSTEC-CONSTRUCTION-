@@ -81,6 +81,11 @@ export const SCHEMA_LIMITS = {
     avatarUrlMax: 350000,
     avatarStoragePathMax: 512,
   },
+  siteImage: {
+    imageUrlMax: 350000,
+    storagePathMax: 512,
+    captionMax: 160,
+  },
 } as const;
 
 export type PhotoAspectRatio = '4/3' | '16/9' | '1/1' | '3/4';
@@ -188,3 +193,21 @@ export const DEFAULT_SITE_PROFILE: SiteProfileRecord = {
   avatarUrl: '',
   avatarStoragePath: 'default',
 };
+
+export const SITE_IMAGE_SLOTS = [
+  'hero',
+  'service_construction',
+  'service_welding',
+  'service_perimeter',
+] as const;
+
+export type SiteImageSlotId = (typeof SITE_IMAGE_SLOTS)[number];
+
+export interface SiteImageRecord {
+  slot: SiteImageSlotId;
+  imageUrl: string;
+  storagePath: string;
+  caption?: string;
+  updatedAt?: Timestamp | null;
+  updatedAtMs?: number;
+}

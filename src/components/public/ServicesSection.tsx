@@ -1,6 +1,13 @@
-import React from 'react';
-import { ArrowUpRight } from 'lucide-react';
-import type { ProjectCategory } from '../../types';
+import React, { useEffect, useState } from 'react';
+import { ArrowUpRight, Building2, Flame, ShieldCheck } from 'lucide-react';
+import { subscribeSiteImages } from '../../services/firestoreService';
+import { fetchLocalPublicPortfolio } from '../../services/localMediaService';
+import type { ProjectCategory, SiteImageRecord, SiteImageSlotId } from '../../types';
+import {
+  getLatestSiteImageOverride,
+  resolveTimestampMs,
+  subscribeSiteContentSync,
+} from '../../utils/siteContentSync';
 import { FastImage } from '../FastImage';
 
 interface ServiceItem {
@@ -81,6 +88,76 @@ interface ServicesSectionProps {
 }
 
 export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServiceForQuote }) => {
+  const [firebaseImages, setFirebaseImages] = useState<
+    Partial<Record<SiteImageSlotId, SiteImageRecord>>
+  >({});
+  const [localImages, setLocalImages] = useState<
+    Partial<Record<SiteImageSlotId, SiteImageRecord>>
+  >({});
+  const [syncVersion, setSyncVersion] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchLocalPublicPortfolio().then((res) => {
+      if (!mounted) return;
+      setLocalImages(res.siteImages ?? {});
+    });
+    const unsubFirestore = subscribeSiteImages(
+      (imgs) => {
+        if (!mounted) return;
+        setFirebaseImages(imgs);
+      },
+      () => {
+        // Fallback cleanly
+      }
+    );
+    const unsubSync = subscribeSiteContentSync({
+      onSiteImage: (slot, entry) => {
+        if (!mounted) return;
+        setSyncVersion((v) => v + 1);
+        setLocalImages((prev) => {
+          const next = { ...prev };
+          if (entry.value) next[slot] = entry.value;
+          else delete next[slot];
+          return next;
+        });
+      },
+    });
+    return () => {
+      mounted = false;
+      unsubFirestore();
+      unsubSync();
+    };
+  }, []);
+
+  const resolveSlot = (slot: SiteImageSlotId): SiteImageRecord | null => {
+    void syncVersion;
+    const fb = firebaseImages[slot] ?? null;
+    const loc = localImages[slot] ?? null;
+    const override = getLatestSiteImageOverride(slot);
+    const fbTs = resolveTimestampMs(fb);
+    const locTs = resolveTimestampMs(loc);
+    const overrideTs = override?.ts ?? 0;
+
+    if (override && overrideTs >= fbTs && overrideTs >= locTs) {
+      return override.value;
+    }
+    if (fb && loc) {
+      return locTs > fbTs ? loc : fb;
+    }
+    return fb ?? loc ?? null;
+  };
+
+  const constructionImg = resolveSlot('service_construction');
+  const weldingImg = resolveSlot('service_welding');
+  const perimeterImg = resolveSlot('service_perimeter');
+
+  const blueprintBgStyle: React.CSSProperties = {
+    backgroundImage:
+      'linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)',
+    backgroundSize: '28px 28px',
+  };
+
   return (
     <section id="services" className="py-20 lg:py-24 bg-slate-50 border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -103,13 +180,26 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
         {/* Visual Showcase Strip (Asymmetric 3-photo feature) */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-12">
           <div className="md:col-span-6 relative rounded-lg overflow-hidden border border-slate-200 bg-[#0B1B2B] aspect-[4/3] md:aspect-auto md:h-72">
-            <FastImage
-              src="/src/assets/images/service_building_steel_1795248990930.jpg"
-              webpSrc="/src/assets/images/service_building_steel_1795248990930.webp"
-              alt="Structural steel frame erection for commercial building construction"
-              darkBg
-              className="w-full h-full object-cover"
-            />
+            {constructionImg?.imageUrl ? (
+              <FastImage
+                key={constructionImg.imageUrl}
+                src={constructionImg.imageUrl}
+                alt={
+                  constructionImg.caption ||
+                  'Commercial steel framing & reinforced foundations project'
+                }
+                priority={constructionImg.imageUrl.startsWith('data:')}
+                darkBg
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div
+                className="w-full h-full flex items-center justify-center"
+                style={blueprintBgStyle}
+              >
+                <Building2 className="w-10 h-10 text-orange-400/70 -mt-8" />
+              </div>
+            )}
             <div
               aria-hidden="true"
               className="absolute inset-0 bg-gradient-to-t from-[#0B1B2B]/90 via-[#0B1B2B]/30 to-transparent"
@@ -117,44 +207,69 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
             <div className="absolute inset-x-0 bottom-0 p-6 text-white">
               <p className="text-xs font-medium text-orange-400 mb-1">Structural Construction</p>
               <p className="font-display text-lg font-bold">
-                Commercial Steel Framing &amp; Reinforced Foundations
+                {constructionImg?.caption ||
+                  'Commercial Steel Framing & Reinforced Foundations'}
               </p>
             </div>
           </div>
 
           <div className="md:col-span-3 relative rounded-lg overflow-hidden border border-slate-200 bg-[#0B1B2B] aspect-[4/3] md:aspect-auto md:h-72">
-            <FastImage
-              src="/src/assets/images/workshop_fabrication_1795248991295.jpg"
-              webpSrc="/src/assets/images/workshop_fabrication_1795248991295.webp"
-              alt="Precision welding of heavy structural steel I-beams in workshop"
-              darkBg
-              className="w-full h-full object-cover"
-            />
+            {weldingImg?.imageUrl ? (
+              <FastImage
+                key={weldingImg.imageUrl}
+                src={weldingImg.imageUrl}
+                alt={weldingImg.caption || 'Certified structural welding in workshop'}
+                priority={weldingImg.imageUrl.startsWith('data:')}
+                darkBg
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div
+                className="w-full h-full flex items-center justify-center"
+                style={blueprintBgStyle}
+              >
+                <Flame className="w-9 h-9 text-orange-400/70 -mt-8" />
+              </div>
+            )}
             <div
               aria-hidden="true"
               className="absolute inset-0 bg-gradient-to-t from-[#0B1B2B]/90 via-[#0B1B2B]/35 to-transparent"
             />
             <div className="absolute inset-x-0 bottom-0 p-5 text-white">
               <p className="text-xs font-medium text-orange-400 mb-1">Shop Fabrication</p>
-              <p className="font-display text-base font-bold">Certified Structural Welding</p>
+              <p className="font-display text-base font-bold">
+                {weldingImg?.caption || 'Certified Structural Welding'}
+              </p>
             </div>
           </div>
 
           <div className="md:col-span-3 relative rounded-lg overflow-hidden border border-slate-200 bg-[#0B1B2B] aspect-[4/3] md:aspect-auto md:h-72">
-            <FastImage
-              src="/src/assets/images/about_perimeter_fencing_1795248991676.jpg"
-              webpSrc="/src/assets/images/about_perimeter_fencing_1795248991676.webp"
-              alt="Custom perimeter steel fencing and automated swing gate entrance"
-              darkBg
-              className="w-full h-full object-cover"
-            />
+            {perimeterImg?.imageUrl ? (
+              <FastImage
+                key={perimeterImg.imageUrl}
+                src={perimeterImg.imageUrl}
+                alt={perimeterImg.caption || 'Gates & palisade perimeter security fencing'}
+                priority={perimeterImg.imageUrl.startsWith('data:')}
+                darkBg
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div
+                className="w-full h-full flex items-center justify-center"
+                style={blueprintBgStyle}
+              >
+                <ShieldCheck className="w-9 h-9 text-orange-400/70 -mt-8" />
+              </div>
+            )}
             <div
               aria-hidden="true"
               className="absolute inset-0 bg-gradient-to-t from-[#0B1B2B]/90 via-[#0B1B2B]/35 to-transparent"
             />
             <div className="absolute inset-x-0 bottom-0 p-5 text-white">
               <p className="text-xs font-medium text-orange-400 mb-1">Perimeter Security</p>
-              <p className="font-display text-base font-bold">Gates &amp; Palisade Fencing</p>
+              <p className="font-display text-base font-bold">
+                {perimeterImg?.caption || 'Gates & Palisade Fencing'}
+              </p>
             </div>
           </div>
         </div>

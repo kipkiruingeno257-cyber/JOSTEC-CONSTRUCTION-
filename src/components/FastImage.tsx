@@ -24,11 +24,16 @@ export const FastImage: React.FC<FastImageProps> = ({
   const imgRef = useRef<HTMLImageElement | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
-  const [loaded, setLoaded] = useState(priority);
+  const isInstant = priority || src.startsWith('data:');
+  const [loaded, setLoaded] = useState(isInstant);
 
   useEffect(() => {
+    if (isInstant) {
+      setLoaded(true);
+      return;
+    }
     const el = imgRef.current;
-    if (el && el.complete) {
+    if (el && el.complete && el.currentSrc) {
       if (el.naturalWidth > 0) {
         setLoaded(true);
       } else {
@@ -37,12 +42,8 @@ export const FastImage: React.FC<FastImageProps> = ({
       }
       return;
     }
-    if (priority) {
-      setLoaded(true);
-    } else {
-      setLoaded(false);
-    }
-  }, [src, webpSrc, priority]);
+    setLoaded(false);
+  }, [src, webpSrc, isInstant]);
 
   const handleError = () => {
     setLoaded(true);

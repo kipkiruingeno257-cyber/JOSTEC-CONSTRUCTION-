@@ -20,8 +20,6 @@ interface PhotoAppearanceStudioTabProps {
   onLocalMutated?: () => Promise<void> | void;
 }
 
-const SAMPLE_PREVIEW_URL = '/src/assets/images/hero_structural_gate_1795248991739.webp';
-
 const QUICK_PRESETS: { label: string; patch: Partial<PhotoAppearance> }[] = [
   {
     label: 'Standard Portfolio',
@@ -147,7 +145,7 @@ export const PhotoAppearanceStudioTab: React.FC<PhotoAppearanceStudioTabProps> =
       return selectedProject.imageUrls[0];
     }
     const withPhoto = projects.find((p) => p.imageUrls && p.imageUrls.length > 0);
-    return withPhoto?.imageUrls?.[0] ?? SAMPLE_PREVIEW_URL;
+    return withPhoto?.imageUrls?.[0] ?? '';
   }, [scope, selectedProject, projects]);
 
   const previewTitle =

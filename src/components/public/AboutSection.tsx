@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Award, Compass, ShieldCheck } from 'lucide-react';
+import { Award, Compass, HardHat, ShieldCheck } from 'lucide-react';
 import { subscribeSiteProfile } from '../../services/firestoreService';
 import { fetchLocalPublicPortfolio } from '../../services/localMediaService';
 import { DEFAULT_SITE_PROFILE, type SiteProfileRecord } from '../../types';
+import {
+  getLatestProfileOverride,
+  resolveTimestampMs,
+  subscribeSiteContentSync,
+} from '../../utils/siteContentSync';
 import { FastImage } from '../FastImage';
-
-const ENGINEER_PORTRAIT_JPG = '/src/assets/images/engineer_portrait_1795248991352.jpg';
-const ENGINEER_PORTRAIT_WEBP = '/src/assets/images/engineer_portrait_1795248991352.webp';
 
 export const AboutSection: React.FC = () => {
   const [firebaseProfile, setFirebaseProfile] = useState<SiteProfileRecord | null>(null);
   const [localProfile, setLocalProfile] = useState<SiteProfileRecord | null>(null);
+  const [syncOverride, setSyncOverride] = useState(() => getLatestProfileOverride());
 
   useEffect(() => {
     let mounted = true;
@@ -18,7 +21,7 @@ export const AboutSection: React.FC = () => {
       if (!mounted) return;
       setLocalProfile(res.profile ?? null);
     });
-    const unsubscribe = subscribeSiteProfile(
+    const unsubscribeFirestore = subscribeSiteProfile(
       (prof) => {
         if (!mounted) return;
         setFirebaseProfile(prof);
@@ -27,15 +30,35 @@ export const AboutSection: React.FC = () => {
         // Fallback to local/default profile cleanly if offline or unconfigured
       }
     );
+    const unsubscribeSync = subscribeSiteContentSync({
+      onProfile: (entry) => {
+        if (!mounted) return;
+        setSyncOverride(entry);
+        if (entry.value) {
+          setLocalProfile(entry.value);
+        }
+      },
+    });
     return () => {
       mounted = false;
-      unsubscribe();
+      unsubscribeFirestore();
+      unsubscribeSync();
     };
   }, []);
 
   const profile = useMemo<SiteProfileRecord>(() => {
+    const fbTs = resolveTimestampMs(firebaseProfile);
+    const localTs = resolveTimestampMs(localProfile);
+    const overrideTs = syncOverride?.ts ?? 0;
+
+    if (syncOverride && overrideTs >= fbTs && overrideTs >= localTs) {
+      return syncOverride.value ?? DEFAULT_SITE_PROFILE;
+    }
+    if (firebaseProfile && localProfile) {
+      return localTs > fbTs ? localProfile : firebaseProfile;
+    }
     return firebaseProfile ?? localProfile ?? DEFAULT_SITE_PROFILE;
-  }, [firebaseProfile, localProfile]);
+  }, [firebaseProfile, localProfile, syncOverride]);
 
   const paragraphs = useMemo(() => {
     const raw = (profile.description || DEFAULT_SITE_PROFILE.description)
@@ -53,24 +76,36 @@ export const AboutSection: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-stretch">
           {/* Engineer Portrait Column */}
           <div className="lg:col-span-5 flex flex-col">
-            <div className="relative flex-1 min-h-[400px] rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+            <div className="relative flex-1 min-h-[400px] rounded-lg overflow-hidden bg-[#0B1B2B] border border-slate-200">
               {customAvatar ? (
                 <FastImage
+                  key={customAvatar}
                   src={customAvatar}
                   alt={`${profile.displayName} — ${profile.title}`}
+                  priority
+                  darkBg
                   className="w-full h-full object-cover object-top"
                 />
               ) : (
-                <FastImage
-                  src={ENGINEER_PORTRAIT_JPG}
-                  webpSrc={ENGINEER_PORTRAIT_WEBP}
-                  alt={`${profile.displayName} holding structural blueprints inside the fabrication bay`}
-                  className="w-full h-full object-cover object-top"
-                />
+                <div
+                  className="w-full h-full min-h-[400px] flex flex-col items-center justify-center p-8 text-center"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)',
+                    backgroundSize: '32px 32px',
+                  }}
+                >
+                  <div className="w-20 h-20 rounded-full bg-white/5 border border-white/15 flex items-center justify-center mb-4">
+                    <HardHat className="w-9 h-9 text-orange-400" />
+                  </div>
+                  <p className="text-xs font-mono uppercase tracking-widest text-slate-400">
+                    Principal Engineer Profile
+                  </p>
+                </div>
               )}
               <div
                 aria-hidden="true"
-                className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0B1B2B]/90 via-[#0B1B2B]/40 to-transparent"
+                className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0B1B2B]/95 via-[#0B1B2B]/45 to-transparent"
               />
               <div className="absolute inset-x-0 bottom-0 p-6 text-white">
                 <p className="font-display text-lg font-semibold">{profile.displayName}</p>

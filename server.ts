@@ -132,11 +132,28 @@ interface LocalSiteProfile {
   updatedAtMs: number;
 }
 
+const ALLOWED_SITE_IMAGE_SLOTS = [
+  'hero',
+  'service_construction',
+  'service_welding',
+  'service_perimeter',
+] as const;
+type LocalSiteImageSlot = (typeof ALLOWED_SITE_IMAGE_SLOTS)[number];
+
+interface LocalSiteImage {
+  slot: LocalSiteImageSlot;
+  imageUrl: string;
+  storagePath: string;
+  caption?: string;
+  updatedAtMs: number;
+}
+
 interface LocalStore {
   projects: LocalProject[];
   testimonials: LocalTestimonial[];
   inquiries: LocalInquiry[];
   profile?: LocalSiteProfile | null;
+  siteImages?: Partial<Record<LocalSiteImageSlot, LocalSiteImage>>;
 }
 
 interface AuthConfig {
@@ -198,10 +215,12 @@ function readStore(): LocalStore {
       testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
       inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
       profile: parsed.profile && typeof parsed.profile === 'object' ? parsed.profile : null,
+      siteImages:
+        parsed.siteImages && typeof parsed.siteImages === 'object' ? parsed.siteImages : {},
     };
     return cachedStore;
   } catch {
-    cachedStore = { projects: [], testimonials: [], inquiries: [], profile: null };
+    cachedStore = { projects: [], testimonials: [], inquiries: [], profile: null, siteImages: {} };
     return cachedStore;
   }
 }
@@ -729,7 +748,7 @@ async function startServer() {
 
   // --- Standalone Local Mode Portfolio & Admin CRUD ---
   app.get('/api/local/portfolio', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-store');
     const store = readStore();
     res.json({
       projects: store.projects
@@ -739,6 +758,7 @@ async function startServer() {
         .filter((t) => t.status === 'published')
         .sort((a, b) => b.createdAtMs - a.createdAtMs),
       profile: store.profile ?? null,
+      siteImages: store.siteImages ?? {},
     });
   });
 
@@ -784,6 +804,7 @@ async function startServer() {
       testimonials: [...store.testimonials].sort((a, b) => b.createdAtMs - a.createdAtMs),
       inquiries: [...store.inquiries].sort((a, b) => b.createdAtMs - a.createdAtMs),
       profile: store.profile ?? null,
+      siteImages: store.siteImages ?? {},
     });
   });
 
@@ -1087,14 +1108,92 @@ async function startServer() {
     res.json({ reset: true });
   });
 
-  // Fast cached static asset delivery for bundled site photography
-  app.use(
-    '/src/assets/images',
-    express.static(path.resolve(__dirname, 'src/assets/images'), {
-      maxAge: '30d',
-      immutable: true,
-    })
-  );
+  app.put('/api/local/site-images/:slot', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+    const rawSlot = req.params.slot;
+    if (!ALLOWED_SITE_IMAGE_SLOTS.includes(rawSlot as LocalSiteImageSlot)) {
+      res.status(400).json({ error: 'Invalid site image slot.' });
+      return;
+    }
+    const slot = rawSlot as LocalSiteImageSlot;
+    const b = req.body as Partial<LocalSiteImage> & { removedStoragePath?: string };
+    const imageUrl = String(b.imageUrl || '').trim().slice(0, 350000);
+    const storagePath = String(b.storagePath || 'external').trim().slice(0, 512);
+    const caption = String(b.caption || '').trim().slice(0, 160);
+
+    if (!imageUrl || !isSafeImageUrl(imageUrl)) {
+      res.status(400).json({ error: 'Please provide a valid image file or URL.' });
+      return;
+    }
+
+    const store = readStore();
+    const prevStoragePath = store.siteImages?.[slot]?.storagePath;
+    const record: LocalSiteImage = {
+      slot,
+      imageUrl,
+      storagePath: storagePath || 'external',
+      caption,
+      updatedAtMs: Date.now(),
+    };
+
+    const cleanupPaths = new Set<string>();
+    if (b.removedStoragePath && b.removedStoragePath.startsWith('local:')) {
+      cleanupPaths.add(b.removedStoragePath);
+    }
+    if (
+      prevStoragePath &&
+      prevStoragePath.startsWith('local:') &&
+      prevStoragePath !== record.storagePath
+    ) {
+      cleanupPaths.add(prevStoragePath);
+    }
+    for (const sp of cleanupPaths) {
+      const fname = sp.slice(6);
+      const resolved = path.resolve(UPLOADS_DIR, fname);
+      if (resolved.startsWith(UPLOADS_DIR + path.sep) && fs.existsSync(resolved)) {
+        fs.unlinkSync(resolved);
+      }
+    }
+
+    store.siteImages = {
+      ...(store.siteImages ?? {}),
+      [slot]: record,
+    };
+    writeStore(store);
+    res.json(record);
+  });
+
+  app.delete('/api/local/site-images/:slot', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+    const rawSlot = req.params.slot;
+    if (!ALLOWED_SITE_IMAGE_SLOTS.includes(rawSlot as LocalSiteImageSlot)) {
+      res.status(400).json({ error: 'Invalid site image slot.' });
+      return;
+    }
+    const slot = rawSlot as LocalSiteImageSlot;
+    const store = readStore();
+    const prevStoragePath = store.siteImages?.[slot]?.storagePath;
+    if (prevStoragePath && prevStoragePath.startsWith('local:')) {
+      const fname = prevStoragePath.slice(6);
+      const resolved = path.resolve(UPLOADS_DIR, fname);
+      if (resolved.startsWith(UPLOADS_DIR + path.sep) && fs.existsSync(resolved)) {
+        fs.unlinkSync(resolved);
+      }
+    }
+    if (store.siteImages && slot in store.siteImages) {
+      const nextImages = { ...store.siteImages };
+      delete nextImages[slot];
+      store.siteImages = nextImages;
+      writeStore(store);
+    }
+    res.json({ deleted: true });
+  });
 
   // Crawler blocking for the private Admin Console URL & API routes
   const rawAdminPath = (process.env.VITE_ADMIN_PATH || '/admin').trim();

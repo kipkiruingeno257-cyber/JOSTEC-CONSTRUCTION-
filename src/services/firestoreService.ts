@@ -27,8 +27,13 @@ import {
 import { deleteAppServerMedia } from './localMediaService';
 import { normalizePhotoAppearance } from '../utils/photoAppearance';
 import {
+  broadcastSiteImageChange,
+  broadcastSiteProfileChange,
+} from '../utils/siteContentSync';
+import {
   PROJECT_CATEGORIES,
   SCHEMA_LIMITS,
+  SITE_IMAGE_SLOTS,
   type AdminUserRecord,
   type InquiryRecord,
   type InquiryStatus,
@@ -36,6 +41,8 @@ import {
   type ProjectCategory,
   type ProjectRecord,
   type ProjectStatus,
+  type SiteImageRecord,
+  type SiteImageSlotId,
   type SiteProfileRecord,
   type TestimonialRecord,
   type TestimonialStatus,
@@ -854,6 +861,15 @@ export async function saveSiteProfile(
       avatarStoragePath,
       updatedAt: serverTimestamp(),
     });
+    broadcastSiteProfileChange({
+      displayName,
+      title,
+      headline,
+      description,
+      avatarUrl,
+      avatarStoragePath,
+      updatedAtMs: Date.now(),
+    });
     if (removedStoragePath && removedStoragePath !== avatarStoragePath) {
       await deleteStorageObjects([removedStoragePath]);
     }
@@ -872,6 +888,157 @@ export async function resetSiteProfile(currentStoragePath?: string): Promise<voi
       await deleteStorageObjects([currentStoragePath]);
     }
     await deleteDoc(doc(db, 'site_profile', 'main'));
+    broadcastSiteProfileChange(null);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, docPath);
+  }
+}
+
+// --- Public Website Slot Photography (/site_images/{slotId}) ---
+
+export function subscribeSiteImages(
+  onData: (images: Partial<Record<SiteImageSlotId, SiteImageRecord>>) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  if (!isFirebaseConfigured || !db) {
+    onData({});
+    return () => {};
+  }
+
+  const currentMap: Partial<Record<SiteImageSlotId, SiteImageRecord>> = {};
+  const unsubs = SITE_IMAGE_SLOTS.map((slot) => {
+    const docPath = `site_images/${slot}`;
+    return onSnapshot(
+      doc(db, 'site_images', slot),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          currentMap[slot] = {
+            ...(snapshot.data() as Omit<SiteImageRecord, 'slot'>),
+            slot,
+          };
+        } else {
+          delete currentMap[slot];
+        }
+        onData({ ...currentMap });
+      },
+      (error) => {
+        if (onError) {
+          onError(error);
+        }
+        handleFirestoreError(error, OperationType.GET, docPath);
+      }
+    );
+  });
+
+  return () => {
+    unsubs.forEach((unsub) => unsub());
+  };
+}
+
+export async function uploadSiteSlotImage(
+  slot: SiteImageSlotId,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<UploadedImageResult> {
+  if (!isFirebaseConfigured || !storage) {
+    throw new Error('Firebase Storage is not configured.');
+  }
+  const validationError = validateImageFiles([file]);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+  const safeName = `${Date.now()}_${sanitizeFileName(file.name)}`;
+  const objectPath = `site_images/${slot}/${safeName}`;
+  const storageRef = ref(storage, objectPath);
+
+  return new Promise<UploadedImageResult>((resolve, reject) => {
+    const uploadTask = uploadBytesResumable(storageRef, file, {
+      contentType: file.type || 'image/webp',
+    });
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        const total = Math.max(snapshot.totalBytes, 1);
+        onProgress?.(Math.min(100, Math.round((snapshot.bytesTransferred / total) * 100)));
+      },
+      (error) => {
+        const code = (error as { code?: string })?.code || 'storage/upload-failed';
+        reject(new Error(`Site photo upload failed (${code}): ${error.message}`));
+      },
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          resolve({ url, storagePath: objectPath });
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
+}
+
+export async function saveSiteImage(
+  input: {
+    slot: SiteImageSlotId;
+    imageUrl: string;
+    storagePath: string;
+    caption?: string;
+  },
+  removedStoragePath?: string
+): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    throw new Error('Firestore is not configured.');
+  }
+  const slot = input.slot;
+  const imageUrl = input.imageUrl.trim().slice(0, SCHEMA_LIMITS.siteImage.imageUrlMax);
+  const storagePath = (input.storagePath.trim() || 'external').slice(
+    0,
+    SCHEMA_LIMITS.siteImage.storagePathMax
+  );
+  const caption = (input.caption ?? '').trim().slice(0, SCHEMA_LIMITS.siteImage.captionMax);
+
+  if (!imageUrl) {
+    throw new Error('Please choose an image file or enter a valid image URL.');
+  }
+
+  const docPath = `site_images/${slot}`;
+  try {
+    await setDoc(doc(db, 'site_images', slot), {
+      slot,
+      imageUrl,
+      storagePath,
+      caption,
+      updatedAt: serverTimestamp(),
+    });
+    broadcastSiteImageChange(slot, {
+      slot,
+      imageUrl,
+      storagePath,
+      caption,
+      updatedAtMs: Date.now(),
+    });
+    if (removedStoragePath && removedStoragePath !== storagePath) {
+      await deleteStorageObjects([removedStoragePath]);
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, docPath);
+  }
+}
+
+export async function deleteSiteImage(
+  slot: SiteImageSlotId,
+  currentStoragePath?: string
+): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    throw new Error('Firestore is not configured.');
+  }
+  const docPath = `site_images/${slot}`;
+  try {
+    if (currentStoragePath) {
+      await deleteStorageObjects([currentStoragePath]);
+    }
+    await deleteDoc(doc(db, 'site_images', slot));
+    broadcastSiteImageChange(slot, null);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, docPath);
   }

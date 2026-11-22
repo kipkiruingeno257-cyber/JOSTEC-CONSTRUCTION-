@@ -1,5 +1,9 @@
 import { auth } from '../lib/firebase';
 import { processImageFile } from '../utils/imageProcessor';
+import {
+  broadcastSiteImageChange,
+  broadcastSiteProfileChange,
+} from '../utils/siteContentSync';
 import type {
   InquiryRecord,
   InquiryStatus,
@@ -7,6 +11,8 @@ import type {
   ProjectCategory,
   ProjectRecord,
   ProjectStatus,
+  SiteImageRecord,
+  SiteImageSlotId,
   SiteProfileRecord,
   TestimonialRecord,
   TestimonialStatus,
@@ -332,6 +338,7 @@ type PublicPortfolioResponse = {
   projects: ProjectRecord[];
   testimonials: TestimonialRecord[];
   profile: SiteProfileRecord | null;
+  siteImages: Partial<Record<SiteImageSlotId, SiteImageRecord>>;
 };
 
 let portfolioInflight: Promise<PublicPortfolioResponse> | null = null;
@@ -351,18 +358,19 @@ export async function fetchLocalPublicPortfolio(): Promise<PublicPortfolioRespon
   }
   portfolioInflight = (async () => {
     try {
-      const res = await fetch('/api/local/portfolio');
-      if (!res.ok) return { projects: [], testimonials: [], profile: null };
+      const res = await fetch('/api/local/portfolio', { cache: 'no-store' });
+      if (!res.ok) return { projects: [], testimonials: [], profile: null, siteImages: {} };
       const parsed = (await res.json()) as Partial<PublicPortfolioResponse>;
       const data: PublicPortfolioResponse = {
         projects: Array.isArray(parsed.projects) ? parsed.projects : [],
         testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
         profile: parsed.profile ?? null,
+        siteImages: parsed.siteImages ?? {},
       };
       portfolioCache = { data, ts: Date.now() };
       return data;
     } catch {
-      return { projects: [], testimonials: [], profile: null };
+      return { projects: [], testimonials: [], profile: null, siteImages: {} };
     } finally {
       portfolioInflight = null;
     }
@@ -375,10 +383,12 @@ export async function fetchLocalAdminData(): Promise<{
   testimonials: TestimonialRecord[];
   inquiries: InquiryRecord[];
   profile: SiteProfileRecord | null;
+  siteImages: Partial<Record<SiteImageSlotId, SiteImageRecord>>;
 }> {
   const authHeaders = await getAuthHeaders();
   const res = await fetch('/api/local/admin/data', {
     credentials: 'include',
+    cache: 'no-store',
     headers: authHeaders,
   });
   if (!res.ok) {
@@ -389,12 +399,14 @@ export async function fetchLocalAdminData(): Promise<{
     testimonials: TestimonialRecord[];
     inquiries: InquiryRecord[];
     profile: SiteProfileRecord | null;
+    siteImages: Partial<Record<SiteImageSlotId, SiteImageRecord>>;
   }>;
   return {
     projects: Array.isArray(parsed.projects) ? parsed.projects : [],
     testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
     inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
     profile: parsed.profile ?? null,
+    siteImages: parsed.siteImages ?? {},
   };
 }
 
@@ -579,7 +591,9 @@ export async function saveLocalSiteProfile(
     throw new Error(b.error || 'Failed to save profile settings.');
   }
   invalidateLocalPortfolioCache();
-  return (await res.json()) as SiteProfileRecord;
+  const saved = (await res.json()) as SiteProfileRecord;
+  broadcastSiteProfileChange(saved);
+  return saved;
 }
 
 export async function resetLocalSiteProfile(): Promise<void> {
@@ -593,4 +607,46 @@ export async function resetLocalSiteProfile(): Promise<void> {
     throw new Error('Failed to reset local profile.');
   }
   invalidateLocalPortfolioCache();
+  broadcastSiteProfileChange(null);
+}
+
+export async function saveLocalSiteImage(
+  slot: SiteImageSlotId,
+  payload: {
+    imageUrl: string;
+    storagePath: string;
+    caption?: string;
+  },
+  removedStoragePath?: string
+): Promise<SiteImageRecord> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(`/api/local/site-images/${encodeURIComponent(slot)}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({ ...payload, removedStoragePath }),
+  });
+  if (!res.ok) {
+    const b = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(b.error || 'Failed to save site image.');
+  }
+  invalidateLocalPortfolioCache();
+  const saved = (await res.json()) as SiteImageRecord;
+  broadcastSiteImageChange(slot, saved);
+  return saved;
+}
+
+export async function deleteLocalSiteImage(slot: SiteImageSlotId): Promise<void> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(`/api/local/site-images/${encodeURIComponent(slot)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: authHeaders,
+  });
+  if (!res.ok) {
+    const b = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(b.error || 'Failed to remove site image.');
+  }
+  invalidateLocalPortfolioCache();
+  broadcastSiteImageChange(slot, null);
 }

@@ -1,23 +1,91 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Building2 } from 'lucide-react';
+import { subscribeSiteImages } from '../../services/firestoreService';
+import { fetchLocalPublicPortfolio } from '../../services/localMediaService';
+import type { SiteImageRecord } from '../../types';
+import {
+  getLatestSiteImageOverride,
+  resolveTimestampMs,
+  subscribeSiteContentSync,
+} from '../../utils/siteContentSync';
 import { FastImage } from '../FastImage';
 
-const HERO_IMAGE_JPG = '/src/assets/images/hero_structural_gate_1795248991739.jpg';
-const HERO_IMAGE_WEBP = '/src/assets/images/hero_structural_gate_1795248991739.webp';
-
 export const HeroSection: React.FC = () => {
+  const [firebaseHero, setFirebaseHero] = useState<SiteImageRecord | null>(null);
+  const [localHero, setLocalHero] = useState<SiteImageRecord | null>(null);
+  const [syncOverride, setSyncOverride] = useState(() => getLatestSiteImageOverride('hero'));
+
+  useEffect(() => {
+    let mounted = true;
+    fetchLocalPublicPortfolio().then((res) => {
+      if (!mounted) return;
+      setLocalHero(res.siteImages?.hero ?? null);
+    });
+    const unsubFirestore = subscribeSiteImages(
+      (imgs) => {
+        if (!mounted) return;
+        setFirebaseHero(imgs.hero ?? null);
+      },
+      () => {
+        // Fallback to local/empty gracefully
+      }
+    );
+    const unsubSync = subscribeSiteContentSync({
+      onSiteImage: (slot, entry) => {
+        if (!mounted || slot !== 'hero') return;
+        setSyncOverride(entry);
+        setLocalHero(entry.value);
+      },
+    });
+    return () => {
+      mounted = false;
+      unsubFirestore();
+      unsubSync();
+    };
+  }, []);
+
+  const heroImage = useMemo<SiteImageRecord | null>(() => {
+    const fbTs = resolveTimestampMs(firebaseHero);
+    const localTs = resolveTimestampMs(localHero);
+    const overrideTs = syncOverride?.ts ?? 0;
+
+    if (syncOverride && overrideTs >= fbTs && overrideTs >= localTs) {
+      return syncOverride.value;
+    }
+    if (firebaseHero && localHero) {
+      return localTs > fbTs ? localHero : firebaseHero;
+    }
+    return firebaseHero ?? localHero ?? null;
+  }, [firebaseHero, localHero, syncOverride]);
+
   return (
     <section id="top" className="bg-[#0B1B2B] text-white">
       <div className="relative min-h-[560px] lg:min-h-[640px] flex items-center">
-        <div className="absolute inset-0">
-          <FastImage
-            src={HERO_IMAGE_JPG}
-            webpSrc={HERO_IMAGE_WEBP}
-            alt="Custom fabricated heavy-duty structural steel sliding gate and concrete perimeter wall"
-            priority
-            darkBg
-            className="w-full h-full object-cover"
-          />
+        <div
+          className="absolute inset-0 bg-[#0B1B2B]"
+          style={
+            !heroImage?.imageUrl
+              ? {
+                  backgroundImage:
+                    'radial-gradient(circle at 75% 35%, rgba(234, 88, 12, 0.14), transparent 52%), linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)',
+                  backgroundSize: '100% 100%, 44px 44px, 44px 44px',
+                }
+              : undefined
+          }
+        >
+          {heroImage?.imageUrl && (
+            <FastImage
+              key={heroImage.imageUrl}
+              src={heroImage.imageUrl}
+              alt={
+                heroImage.caption ||
+                'Custom fabricated heavy-duty structural steelworks and construction project'
+              }
+              priority
+              darkBg
+              className="w-full h-full object-cover"
+            />
+          )}
         </div>
         <div
           aria-hidden="true"
