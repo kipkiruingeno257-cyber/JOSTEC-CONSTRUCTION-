@@ -1,11 +1,12 @@
 import React from 'react';
-import { ShieldCheck, UserCog } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Lock, LogIn, ShieldCheck } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useFirebase } from '../../context/FirebaseContext';
 import { COMPANY_INFO } from '../../types';
 
 export const Footer: React.FC = () => {
   const { activeAdminMode } = useFirebase();
+  const navigate = useNavigate();
 
   return (
     <footer className="bg-[#0B1B2B] text-slate-300 border-t border-white/10">
@@ -45,7 +46,7 @@ export const Footer: React.FC = () => {
                 to="/admin"
                 className="inline-flex items-center gap-1.5 text-orange-400 hover:text-orange-300 font-medium pt-1 transition-colors"
               >
-                <UserCog className="w-4 h-4 shrink-0" />
+                <Lock className="w-3.5 h-3.5 shrink-0" />
                 {activeAdminMode ? 'Admin Dashboard' : 'Admin Login'}
               </Link>
             </div>
@@ -57,25 +58,28 @@ export const Footer: React.FC = () => {
             &copy; {new Date().getFullYear()} {COMPANY_INFO.name}. All rights reserved.
           </p>
 
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:inline">
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="hidden md:inline">
               Structural Engineering · Metal Fabrication · Perimeter Security
             </span>
-            <Link
-              to="/admin"
-              aria-label={activeAdminMode ? 'Open Admin Dashboard' : 'Administrator Login'}
-              title={activeAdminMode ? 'Open Admin Dashboard' : 'Administrator Login'}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-orange-500/40 bg-orange-600/15 text-white hover:bg-orange-600 hover:border-orange-600 transition-colors whitespace-nowrap shrink-0"
+            <button
+              type="button"
+              onClick={() => navigate('/admin')}
+              aria-label={activeAdminMode ? 'Open Admin Dashboard' : 'Admin Login'}
+              title={activeAdminMode ? 'Open Admin Dashboard' : 'Admin Login'}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 ${
+                activeAdminMode
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-orange-600 hover:bg-orange-700'
+              }`}
             >
               {activeAdminMode ? (
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <ShieldCheck className="w-4 h-4 shrink-0" />
               ) : (
-                <UserCog className="w-4 h-4 text-orange-400 shrink-0" />
+                <LogIn className="w-4 h-4 shrink-0" />
               )}
-              <span className="font-semibold">
-                {activeAdminMode ? 'Admin Dashboard' : 'Admin Login'}
-              </span>
-            </Link>
+              <span>{activeAdminMode ? 'Admin Dashboard' : 'Admin Login'}</span>
+            </button>
           </div>
         </div>
       </div>
