@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { COMPANY_INFO } from '../../types';
 
 export const Navbar: React.FC = () => {
@@ -86,13 +85,6 @@ export const Navbar: React.FC = () => {
             >
               Request Quote
             </a>
-            <Link
-              to="/admin"
-              onClick={handleNavClick}
-              className="w-full text-center px-4 py-2.5 text-sm font-medium text-slate-700 border border-slate-200 rounded-md hover:bg-slate-50 transition-colors"
-            >
-              Owner Portal
-            </Link>
           </div>
         </div>
       )}

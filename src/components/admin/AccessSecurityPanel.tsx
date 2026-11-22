@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import { deleteApp, initializeApp } from 'firebase/app';
+import {
+  createUserWithEmailAndPassword,
+  getAuth,
+  sendEmailVerification,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
 import {
   Check,
+  Cloud,
   Copy,
   ExternalLink,
   KeyRound,
@@ -13,6 +22,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useFirebase, type AdminSessionMode } from '../../context/FirebaseContext';
+import { ADMIN_CONSOLE_PATH } from '../../lib/adminPath';
 import { activeFirebaseConfig } from '../../lib/firebase';
 import {
   grantAdminAccess,
@@ -29,10 +39,13 @@ interface AccessSecurityPanelProps {
 export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, onNotify }) => {
   const {
     user,
+    isConfigured,
     isBootstrappedAdmin,
     localEnvControlled,
     localHasRecoveryKey,
     newRecoveryKeyBanner,
+    signInWithEmail,
+    signInWithGoogle,
     updateLocalPasscode,
     regenerateLocalRecoveryKey,
     dismissRecoveryKeyBanner,
@@ -42,7 +55,13 @@ export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, 
   const [newAdminUid, setNewAdminUid] = useState('');
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [provisionMode, setProvisionMode] = useState<'create' | 'uid'>('create');
   const [savingAdmin, setSavingAdmin] = useState(false);
+
+  const [cloudEmail, setCloudEmail] = useState('');
+  const [cloudPassword, setCloudPassword] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);
 
   const [currentPasscode, setCurrentPasscode] = useState('');
   const [nextPasscode, setNextPasscode] = useState('');
@@ -74,19 +93,66 @@ export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, 
     e.preventDefault();
     setSavingAdmin(true);
     try {
-      await grantAdminAccess({
-        uid: newAdminUid,
-        email: newAdminEmail,
-        displayName: newAdminName,
-      });
-      setNewAdminUid('');
-      setNewAdminEmail('');
-      setNewAdminName('');
-      onNotify('success', 'Team administrator added. They can now sign in with Email & Password.');
+      if (provisionMode === 'create') {
+        const tempAppName = `AdminProvisioner_${Date.now()}`;
+        const secondaryApp = initializeApp(activeFirebaseConfig, tempAppName);
+        try {
+          const secondaryAuth = getAuth(secondaryApp);
+          const cred = await createUserWithEmailAndPassword(
+            secondaryAuth,
+            newAdminEmail.trim(),
+            newAdminPassword
+          );
+          if (newAdminName.trim()) {
+            await updateProfile(cred.user, { displayName: newAdminName.trim() });
+          }
+          await sendEmailVerification(cred.user);
+          const createdUid = cred.user.uid;
+          await signOut(secondaryAuth);
+          await grantAdminAccess({
+            uid: createdUid,
+            email: newAdminEmail,
+            displayName: newAdminName,
+          });
+          setNewAdminEmail('');
+          setNewAdminName('');
+          setNewAdminPassword('');
+          onNotify(
+            'success',
+            'Team admin account created & authorized. They can sign in with Email & Password after verifying their email.'
+          );
+        } finally {
+          await deleteApp(secondaryApp).catch(() => {});
+        }
+      } else {
+        await grantAdminAccess({
+          uid: newAdminUid,
+          email: newAdminEmail,
+          displayName: newAdminName,
+        });
+        setNewAdminUid('');
+        setNewAdminEmail('');
+        setNewAdminName('');
+        onNotify('success', 'Team administrator added. They can now sign in with Email & Password.');
+      }
     } catch (err) {
       onNotify('error', err instanceof Error ? err.message : 'Unable to grant administrator access.');
     } finally {
       setSavingAdmin(false);
+    }
+  };
+
+  const handleConnectCloudSync = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCloudBusy(true);
+    try {
+      await signInWithEmail(cloudEmail, cloudPassword);
+      setCloudPassword('');
+      onNotify('success', 'Connected to Firebase Cloud Sync.');
+    } catch (err) {
+      onNotify('error', err instanceof Error ? err.message : 'Unable to connect Firebase Cloud Sync.');
+    } finally {
+      setCloudBusy(false);
     }
   };
 
@@ -236,6 +302,41 @@ export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, 
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs text-slate-600">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-slate-700">Admin Console URL:</span>
+            <code className="px-2 py-1 rounded bg-slate-100 font-mono text-slate-900 truncate">
+              {typeof window !== 'undefined'
+                ? `${window.location.origin}${ADMIN_CONSOLE_PATH}`
+                : ADMIN_CONSOLE_PATH}
+            </code>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              handleCopy(
+                'adminUrl',
+                typeof window !== 'undefined'
+                  ? `${window.location.origin}${ADMIN_CONSOLE_PATH}`
+                  : ADMIN_CONSOLE_PATH
+              )
+            }
+            className="inline-flex items-center gap-1 px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
+          >
+            {copiedId === 'adminUrl' ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                Copied URL
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5" />
+                Copy Console URL
+              </>
+            )}
+          </button>
+        </div>
+
         {mode === 'firebase' && user?.uid && (
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs text-slate-600">
             <div className="flex items-center gap-2 min-w-0">
@@ -311,16 +412,42 @@ export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, 
 
           {isBootstrappedAdmin && (
             <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-5">
-              <div className="flex items-center gap-2.5">
-                <Users className="w-5 h-5 text-orange-600" />
-                <div>
-                  <h2 className="font-display text-lg font-bold text-[#0B1B2B]">
-                    Authorized Team Administrators
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Grant non-Google staff emails dashboard access by registering their verified
-                    Firebase UID.
-                  </p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <Users className="w-5 h-5 text-orange-600" />
+                  <div>
+                    <h2 className="font-display text-lg font-bold text-[#0B1B2B]">
+                      Authorized Team Administrators
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Create or authorize non-Google Email &amp; Password admin accounts securely
+                      from inside the dashboard.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setProvisionMode('create')}
+                    className={`pb-1 border-b-2 cursor-pointer ${
+                      provisionMode === 'create'
+                        ? 'border-orange-600 text-[#0B1B2B]'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Create Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProvisionMode('uid')}
+                    className={`pb-1 border-b-2 cursor-pointer ${
+                      provisionMode === 'uid'
+                        ? 'border-orange-600 text-[#0B1B2B]'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Grant Existing UID
+                  </button>
                 </div>
               </div>
 
@@ -345,7 +472,7 @@ export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, 
                 </div>
                 <div className="md:col-span-4">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Verified Email
+                    Admin Email
                   </label>
                   <input
                     type="email"
@@ -358,24 +485,41 @@ export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, 
                 </div>
                 <div className="md:col-span-4">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Firebase User UID
+                    {provisionMode === 'create' ? 'Initial Password (6+ chars)' : 'Firebase User UID'}
                   </label>
                   <div className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={newAdminUid}
-                      onChange={(e) => setNewAdminUid(e.target.value)}
-                      placeholder="Paste UID from sign-in screen"
-                      className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-md text-sm font-mono bg-white text-slate-900 focus:outline-none focus:border-orange-600"
-                    />
+                    {provisionMode === 'create' ? (
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        maxLength={64}
+                        value={newAdminPassword}
+                        onChange={(e) => setNewAdminPassword(e.target.value)}
+                        placeholder="Set initial password"
+                        className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-md text-sm bg-white text-slate-900 focus:outline-none focus:border-orange-600"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        required
+                        value={newAdminUid}
+                        onChange={(e) => setNewAdminUid(e.target.value)}
+                        placeholder="Paste UID from sign-in screen"
+                        className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-md text-sm font-mono bg-white text-slate-900 focus:outline-none focus:border-orange-600"
+                      />
+                    )}
                     <button
                       type="submit"
                       disabled={savingAdmin}
                       className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white text-xs font-semibold rounded-md hover:bg-orange-700 disabled:opacity-60 shrink-0 cursor-pointer"
                     >
                       <UserPlus className="w-3.5 h-3.5" />
-                      {savingAdmin ? 'Adding...' : 'Grant'}
+                      {savingAdmin
+                        ? 'Saving...'
+                        : provisionMode === 'create'
+                        ? 'Create'
+                        : 'Grant'}
                     </button>
                   </div>
                 </div>
@@ -518,6 +662,71 @@ export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, 
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Optional Cloud Sync Bridge when unlocked via Server Password */}
+      {mode === 'local' && isConfigured && (
+        <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <Cloud className="w-5 h-5 text-orange-600" />
+            <div>
+              <h2 className="font-display text-lg font-bold text-[#0B1B2B]">
+                Connect Firebase Cloud Sync
+              </h2>
+              <p className="text-xs text-slate-500">
+                Sign in with your Cloud Email &amp; Password to switch from local storage to your
+                live Firestore database.
+              </p>
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleConnectCloudSync}
+            className="grid grid-cols-1 md:grid-cols-12 gap-3 p-4 bg-slate-50 border border-slate-200 rounded-md"
+          >
+            <div className="md:col-span-5">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Administrator Email
+              </label>
+              <input
+                type="email"
+                required
+                value={cloudEmail}
+                onChange={(e) => setCloudEmail(e.target.value)}
+                placeholder={BOOTSTRAPPED_ADMIN_EMAIL}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white text-slate-900 focus:outline-none focus:border-orange-600"
+              />
+            </div>
+            <div className="md:col-span-4">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={cloudPassword}
+                onChange={(e) => setCloudPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white text-slate-900 focus:outline-none focus:border-orange-600"
+              />
+            </div>
+            <div className="md:col-span-3 flex items-end gap-2">
+              <button
+                type="submit"
+                disabled={cloudBusy}
+                className="flex-1 px-4 py-2 bg-orange-600 text-white text-xs font-semibold rounded-md hover:bg-orange-700 disabled:opacity-60 cursor-pointer"
+              >
+                {cloudBusy ? 'Connecting...' : 'Connect Cloud'}
+              </button>
+              <button
+                type="button"
+                onClick={signInWithGoogle}
+                className="px-3 py-2 border border-slate-300 bg-white text-xs font-semibold text-slate-700 rounded-md hover:bg-slate-100 cursor-pointer"
+              >
+                Google
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

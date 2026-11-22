@@ -28,7 +28,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AccessSecurityPanel } from '../components/admin/AccessSecurityPanel';
 import { InquiriesManager } from '../components/admin/InquiriesManager';
 import { PhotoAppearanceStudioTab } from '../components/admin/PhotoAppearanceStudioTab';
@@ -63,8 +63,7 @@ type AdminTab =
   | 'security'
   | 'setup';
 
-type LoginMethodTab = 'email' | 'local';
-type EmailAuthMode = 'signin' | 'register' | 'reset';
+type EmailAuthMode = 'signin' | 'reset';
 
 export const AdminPage: React.FC = () => {
   const {
@@ -86,7 +85,6 @@ export const AdminPage: React.FC = () => {
     activeAdminMode,
     signInWithGoogle,
     signInWithEmail,
-    registerWithEmail,
     sendPasswordReset,
     resendVerificationEmail,
     refreshAuthSession,
@@ -98,6 +96,7 @@ export const AdminPage: React.FC = () => {
     clearAuthError,
   } = useFirebase();
 
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRecord | null>(null);
@@ -105,12 +104,36 @@ export const AdminPage: React.FC = () => {
   const [uidCopied, setUidCopied] = useState(false);
   const [bannerKeyCopied, setBannerKeyCopied] = useState(false);
 
+  const handleReturnToLiveSite = useCallback(async () => {
+    await signOutAdmin();
+    navigate('/');
+  }, [signOutAdmin, navigate]);
+
+  // Prevent search engines from indexing the private Admin Console URL
+  useEffect(() => {
+    const existingMeta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    const prevContent = existingMeta?.getAttribute('content') ?? null;
+    const meta = existingMeta ?? document.createElement('meta');
+    meta.setAttribute('name', 'robots');
+    meta.setAttribute('content', 'noindex, nofollow');
+    if (!existingMeta) {
+      document.head.appendChild(meta);
+    }
+    return () => {
+      if (!existingMeta) {
+        meta.remove();
+      } else if (prevContent !== null) {
+        existingMeta.setAttribute('content', prevContent);
+      } else {
+        existingMeta.removeAttribute('content');
+      }
+    };
+  }, []);
+
   // Login Gate state
-  const [loginMethod, setLoginMethod] = useState<LoginMethodTab>('email');
   const [emailMode, setEmailMode] = useState<EmailAuthMode>('signin');
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
-  const [displayNameInput, setDisplayNameInput] = useState('');
   const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailNotice, setEmailNotice] = useState<string | null>(null);
@@ -134,12 +157,6 @@ export const AdminPage: React.FC = () => {
   const notify = useCallback((type: 'success' | 'error', text: string) => {
     setToast({ type, text });
   }, []);
-
-  useEffect(() => {
-    if (!isConfigured && localServerAvailable) {
-      setLoginMethod('local');
-    }
-  }, [isConfigured, localServerAvailable]);
 
   useEffect(() => {
     if (!toast) return;
@@ -210,12 +227,6 @@ export const AdminPage: React.FC = () => {
       if (emailMode === 'signin') {
         await signInWithEmail(emailInput, passwordInput);
         setPasswordInput('');
-      } else if (emailMode === 'register') {
-        await registerWithEmail(displayNameInput, emailInput, passwordInput);
-        setPasswordInput('');
-        setEmailNotice(
-          'Account created! Check your inbox for the verification email to complete admin sign-in.'
-        );
       } else {
         await sendPasswordReset(emailInput);
         setEmailNotice(
@@ -263,8 +274,8 @@ export const AdminPage: React.FC = () => {
     );
   }
 
-  // 2A. Signed-in via Email & Password but email is not verified yet
-  if (user && !user.emailVerified && !localAuthenticated) {
+  // 2A. Signed-in via Email & Password on static hosting, waiting for email verification
+  if (!localServerAvailable && user && !user.emailVerified && !localAuthenticated) {
     return (
       <div className="min-h-screen bg-[#0B1B2B] flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-lg p-8 space-y-5">
@@ -329,17 +340,21 @@ export const AdminPage: React.FC = () => {
             >
               Sign Out &amp; Switch Account
             </button>
-            <Link to="/" className="text-slate-600 hover:text-[#0B1B2B] font-medium">
+            <button
+              type="button"
+              onClick={handleReturnToLiveSite}
+              className="text-slate-600 hover:text-[#0B1B2B] font-medium cursor-pointer"
+            >
               Public Website
-            </Link>
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
-  // 2B. Signed-in & verified, but NOT yet an authorized Firebase admin
-  if (user && !isAdmin && !localAuthenticated) {
+  // 2B. Signed-in & verified on static hosting, but NOT yet an authorized Firebase admin
+  if (!localServerAvailable && user && !isAdmin && !localAuthenticated) {
     return (
       <div className="min-h-screen bg-[#0B1B2B] flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-lg p-8 space-y-5">
@@ -405,24 +420,21 @@ export const AdminPage: React.FC = () => {
               <LogOut className="w-4 h-4" />
               Switch Account
             </button>
-            <Link
-              to="/"
-              className="inline-flex items-center px-4 py-2.5 border border-slate-300 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50"
+            <button
+              type="button"
+              onClick={handleReturnToLiveSite}
+              className="inline-flex items-center px-4 py-2.5 border border-slate-300 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 cursor-pointer"
             >
               Public Site
-            </Link>
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
-  // 3. Unauthenticated Login Gate (Email/Password, Workshop Passcode, or Optional Google)
+  // 3. Strict Password-Locked Console Gate
   if (!activeAdminMode) {
-    const showMethodTabs = isConfigured && localServerAvailable;
-    const effectiveTab: LoginMethodTab =
-      showMethodTabs ? loginMethod : isConfigured ? 'email' : 'local';
-
     return (
       <div className="min-h-screen bg-[#0B1B2B] flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-lg p-7 sm:p-8 space-y-6">
@@ -432,268 +444,23 @@ export const AdminPage: React.FC = () => {
             </div>
             <div>
               <h1 className="font-display text-xl font-bold text-[#0B1B2B]">
-                Owner Portal Sign-In
+                Restricted Admin Console
               </h1>
               <p className="text-xs text-slate-500">{COMPANY_INFO.name}</p>
             </div>
           </div>
 
-          {/* Primary Method Switcher (Email/Password vs Workshop Passcode — No Google required) */}
-          {showMethodTabs && (
-            <div className="flex border-b border-slate-200 -mx-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginMethod('email');
-                  clearAuthError();
-                }}
-                className={`flex-1 pb-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors cursor-pointer ${
-                  effectiveTab === 'email'
-                    ? 'border-orange-600 text-[#0B1B2B]'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Email &amp; Password
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginMethod('local');
-                  clearAuthError();
-                }}
-                className={`flex-1 pb-2.5 text-xs sm:text-sm font-semibold border-b-2 transition-colors cursor-pointer ${
-                  effectiveTab === 'local'
-                    ? 'border-orange-600 text-[#0B1B2B]'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Workshop Passcode
-              </button>
-            </div>
-          )}
-
-          {authError && (
-            <div className="p-3.5 rounded-md bg-red-50 border border-red-200 text-xs text-red-900 space-y-2.5">
-              <p className="font-semibold leading-relaxed">{authError}</p>
-              {authErrorCode === 'auth/email-already-in-use' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginMethod('email');
-                    setEmailMode('reset');
-                    clearAuthError();
-                  }}
-                  className="inline-flex items-center gap-1.5 font-semibold underline text-red-950 hover:text-orange-700 cursor-pointer"
-                >
-                  Switch to Set / Reset Password for this email
-                </button>
-              )}
-              {authErrorCode === 'auth/operation-not-allowed' && activeFirebaseConfig.projectId && (
-                <a
-                  href={`https://console.firebase.google.com/project/${activeFirebaseConfig.projectId}/authentication/providers`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 font-semibold underline text-red-950 hover:text-orange-700"
-                >
-                  Enable Email/Password in Firebase Console
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-              {authErrorCode === 'auth/unauthorized-domain' && typeof window !== 'undefined' && (
-                <div className="pt-2 border-t border-red-200 space-y-2 text-red-800">
-                  <p>Copy this exact domain and add it in Firebase Console:</p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 px-2.5 py-1.5 rounded bg-white border border-red-200 font-mono text-[11px] text-slate-900 truncate">
-                      {window.location.hostname}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard?.writeText(window.location.hostname).then(() => {
-                          setDomainCopied(true);
-                          window.setTimeout(() => setDomainCopied(false), 2000);
-                        });
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-white border border-red-300 text-[11px] font-semibold text-red-900 hover:bg-red-100 shrink-0 cursor-pointer"
-                    >
-                      {domainCopied ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-600" />
-                          Copied
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3" />
-                          Copy
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  {activeFirebaseConfig.projectId && (
-                    <a
-                      href={`https://console.firebase.google.com/project/${activeFirebaseConfig.projectId}/authentication/settings`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-semibold underline text-red-950 hover:text-orange-700"
-                    >
-                      Open Firebase Authorized Domains Settings
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {emailNotice && (
-            <div className="p-3.5 rounded-md bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 leading-relaxed">
-              {emailNotice}
-            </div>
-          )}
-
-          {/* Option A: Email & Password (No Google Account Needed) */}
-          {isConfigured && effectiveTab === 'email' && (
-            <form onSubmit={handleEmailAuthSubmit} className="space-y-4">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-600 uppercase tracking-wider">
-                  {emailMode === 'signin'
-                    ? 'Direct Admin Sign-In'
-                    : emailMode === 'register'
-                    ? 'Create Email Login'
-                    : 'Set or Reset Password'}
-                </span>
-                <div className="flex items-center gap-3">
-                  {emailMode !== 'signin' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEmailMode('signin');
-                        clearAuthError();
-                        setEmailNotice(null);
-                      }}
-                      className="font-semibold text-orange-600 hover:underline cursor-pointer"
-                    >
-                      Sign In
-                    </button>
-                  )}
-                  {emailMode !== 'register' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEmailMode('register');
-                        clearAuthError();
-                        setEmailNotice(null);
-                      }}
-                      className="font-semibold text-slate-600 hover:text-[#0B1B2B] cursor-pointer"
-                    >
-                      Register
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {emailMode === 'register' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Full Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    minLength={2}
-                    maxLength={100}
-                    value={displayNameInput}
-                    onChange={(e) => setDisplayNameInput(e.target.value)}
-                    placeholder="Eng. Mark Jenkins"
-                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Administrator Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder={BOOTSTRAPPED_ADMIN_EMAIL}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
-                />
-              </div>
-
-              {emailMode !== 'reset' && (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-slate-700">Password</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEmailMode('reset');
-                        clearAuthError();
-                        setEmailNotice(null);
-                      }}
-                      className="text-xs font-medium text-orange-600 hover:underline cursor-pointer"
-                    >
-                      Set / Forgot password?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type={showEmailPassword ? 'text' : 'password'}
-                      required
-                      minLength={6}
-                      autoComplete={
-                        emailMode === 'register' ? 'new-password' : 'current-password'
-                      }
-                      value={passwordInput}
-                      onChange={(e) => setPasswordInput(e.target.value)}
-                      placeholder="Enter password (6+ characters)"
-                      className="w-full pl-3.5 pr-10 py-2.5 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowEmailPassword((v) => !v)}
-                      aria-label={showEmailPassword ? 'Hide password' : 'Show password'}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
-                    >
-                      {showEmailPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={emailBusy}
-                className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-orange-600 text-white text-sm font-semibold rounded-md hover:bg-orange-700 disabled:opacity-60 transition-colors cursor-pointer"
-              >
-                <KeyRound className="w-4 h-4" />
-                {emailBusy
-                  ? 'Please wait...'
-                  : emailMode === 'signin'
-                  ? 'Sign In Without Google'
-                  : emailMode === 'register'
-                  ? 'Create Admin Account'
-                  : 'Send Password Setup Email'}
-              </button>
-            </form>
-          )}
-
-          {/* Option B: Standalone Workshop Passcode Mode (Server / Zero-Firebase) */}
-          {localServerAvailable && effectiveTab === 'local' && (
-            <form onSubmit={handleLocalPasscodeSubmit} className="space-y-3.5">
+          {localServerAvailable ? (
+            /* Express Server Password Lock (Hides Cloud/Google options until unlocked) */
+            <form onSubmit={handleLocalPasscodeSubmit} className="space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider inline-flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider inline-flex items-center gap-1.5">
                   <Server className="w-3.5 h-3.5 text-orange-600" />
-                  {localRecoveryMode ? 'Recover Workshop Access' : 'Workshop Server Mode'}
+                  {localRecoveryMode
+                    ? 'Recover Console Password'
+                    : localHasPasscode
+                    ? 'Password Lock Required'
+                    : 'Set First-Time Console Password'}
                 </p>
                 {localHasPasscode && localHasRecoveryKey && !localEnvControlled && (
                   <button
@@ -704,17 +471,17 @@ export const AdminPage: React.FC = () => {
                     }}
                     className="text-xs font-semibold text-orange-600 hover:underline cursor-pointer"
                   >
-                    {localRecoveryMode ? 'Back to Passcode' : 'Use Recovery Key'}
+                    {localRecoveryMode ? 'Back to Password' : 'Use Recovery Key'}
                   </button>
                 )}
               </div>
 
               <p className="text-xs text-slate-600 leading-relaxed">
                 {localRecoveryMode
-                  ? 'Enter your saved Recovery Key (JSM-XXXX-XXXX) and choose a new passcode.'
+                  ? 'Enter your saved Recovery Key (JSM-XXXX-XXXX) and set a new Admin Console password.'
                   : localHasPasscode
-                  ? 'Sign in with your workshop passcode — works completely independent of Google and Firebase.'
-                  : 'First-time setup: create a 6+ character workshop passcode. A backup Recovery Key will be generated automatically.'}
+                  ? 'Enter your Admin Console password to unlock this URL. Access locks automatically whenever you return to the public website.'
+                  : 'First-time security lock: create a 6+ character password to protect this Admin Console URL. A backup Recovery Key will be generated automatically.'}
               </p>
 
               {localFormError && (
@@ -738,9 +505,10 @@ export const AdminPage: React.FC = () => {
                     required
                     minLength={6}
                     maxLength={64}
+                    autoComplete="new-password"
                     value={recoveryNewPasscode}
                     onChange={(e) => setRecoveryNewPasscode(e.target.value)}
-                    placeholder="Choose new 6+ char passcode"
+                    placeholder="Choose new 6+ char console password"
                     className="w-full px-3.5 py-2.5 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
                   />
                   <button
@@ -749,26 +517,31 @@ export const AdminPage: React.FC = () => {
                     className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-sm font-semibold rounded-md hover:bg-orange-700 disabled:opacity-60 cursor-pointer"
                   >
                     <KeyRound className="w-4 h-4" />
-                    {localBusy ? 'Resetting...' : 'Reset Passcode & Unlock'}
+                    {localBusy ? 'Resetting...' : 'Reset Password & Unlock'}
                   </button>
                 </div>
               ) : (
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
+                <div className="space-y-3">
+                  <div className="relative">
                     <input
                       type={showLocalPasscode ? 'text' : 'password'}
                       required
                       minLength={6}
                       maxLength={64}
+                      autoComplete={localHasPasscode ? 'current-password' : 'new-password'}
                       value={localPasscode}
                       onChange={(e) => setLocalPasscode(e.target.value)}
-                      placeholder={localHasPasscode ? 'Enter passcode' : 'Create 6+ char passcode'}
-                      className="w-full pl-3.5 pr-9 py-2.5 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                      placeholder={
+                        localHasPasscode
+                          ? 'Enter Admin Console password'
+                          : 'Create 6+ char Admin Console password'
+                      }
+                      className="w-full pl-3.5 pr-10 py-2.5 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
                     />
                     <button
                       type="button"
                       onClick={() => setShowLocalPasscode((v) => !v)}
-                      aria-label={showLocalPasscode ? 'Hide passcode' : 'Show passcode'}
+                      aria-label={showLocalPasscode ? 'Hide password' : 'Show password'}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
                     >
                       {showLocalPasscode ? (
@@ -781,35 +554,202 @@ export const AdminPage: React.FC = () => {
                   <button
                     type="submit"
                     disabled={localBusy}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-sm font-semibold rounded-md hover:bg-orange-700 disabled:opacity-60 shrink-0 cursor-pointer"
+                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-orange-600 text-white text-sm font-semibold rounded-md hover:bg-orange-700 disabled:opacity-60 transition-colors cursor-pointer"
                   >
                     <KeyRound className="w-4 h-4" />
-                    {localBusy ? '...' : localHasPasscode ? 'Unlock' : 'Set & Enter'}
+                    {localBusy
+                      ? 'Verifying...'
+                      : localHasPasscode
+                      ? 'Unlock Admin Console'
+                      : 'Set Password Lock & Enter'}
                   </button>
                 </div>
               )}
             </form>
-          )}
+          ) : isConfigured ? (
+            /* Static Hosting Password Sign-In (No open registration on /admin) */
+            <div className="space-y-5">
+              {authError && (
+                <div className="p-3.5 rounded-md bg-red-50 border border-red-200 text-xs text-red-900 space-y-2.5">
+                  <p className="font-semibold leading-relaxed">{authError}</p>
+                  {authErrorCode === 'auth/operation-not-allowed' && activeFirebaseConfig.projectId && (
+                    <a
+                      href={`https://console.firebase.google.com/project/${activeFirebaseConfig.projectId}/authentication/providers`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-semibold underline text-red-950 hover:text-orange-700"
+                    >
+                      Enable Email/Password in Firebase Console
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  {authErrorCode === 'auth/unauthorized-domain' && typeof window !== 'undefined' && (
+                    <div className="pt-2 border-t border-red-200 space-y-2 text-red-800">
+                      <p>Copy this exact domain and add it in Firebase Console:</p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 px-2.5 py-1.5 rounded bg-white border border-red-200 font-mono text-[11px] text-slate-900 truncate">
+                          {window.location.hostname}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(window.location.hostname).then(() => {
+                              setDomainCopied(true);
+                              window.setTimeout(() => setDomainCopied(false), 2000);
+                            });
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-white border border-red-300 text-[11px] font-semibold text-red-900 hover:bg-red-100 shrink-0 cursor-pointer"
+                        >
+                          {domainCopied ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              Copy
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      {activeFirebaseConfig.projectId && (
+                        <a
+                          href={`https://console.firebase.google.com/project/${activeFirebaseConfig.projectId}/authentication/settings`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-semibold underline text-red-950 hover:text-orange-700"
+                        >
+                          Open Firebase Authorized Domains Settings
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
-          {/* Optional Secondary Google Sign-In */}
-          {isConfigured && (
-            <div className="pt-4 border-t border-slate-200 space-y-2.5">
-              <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider text-center">
-                Or continue with Google
-              </p>
-              <button
-                type="button"
-                onClick={signInWithGoogle}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0B1B2B] text-white text-xs font-semibold rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <HardHat className="w-4 h-4 text-orange-400" />
-                Sign In With Google Account
-              </button>
+              {emailNotice && (
+                <div className="p-3.5 rounded-md bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 leading-relaxed">
+                  {emailNotice}
+                </div>
+              )}
+
+              <form onSubmit={handleEmailAuthSubmit} className="space-y-4">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-600 uppercase tracking-wider">
+                    {emailMode === 'signin' ? 'Password Required' : 'Set or Reset Password'}
+                  </span>
+                  {emailMode === 'reset' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailMode('signin');
+                        clearAuthError();
+                        setEmailNotice(null);
+                      }}
+                      className="font-semibold text-orange-600 hover:underline cursor-pointer"
+                    >
+                      Back to Sign In
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Administrator Email
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder={BOOTSTRAPPED_ADMIN_EMAIL}
+                    className="w-full px-3.5 py-2.5 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                  />
+                </div>
+
+                {emailMode === 'signin' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">Password</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmailMode('reset');
+                          clearAuthError();
+                          setEmailNotice(null);
+                        }}
+                        className="text-xs font-medium text-orange-600 hover:underline cursor-pointer"
+                      >
+                        Set / Forgot password?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showEmailPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        autoComplete="current-password"
+                        value={passwordInput}
+                        onChange={(e) => setPasswordInput(e.target.value)}
+                        placeholder="Enter administrator password"
+                        className="w-full pl-3.5 pr-10 py-2.5 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEmailPassword((v) => !v)}
+                        aria-label={showEmailPassword ? 'Hide password' : 'Show password'}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                      >
+                        {showEmailPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={emailBusy}
+                  className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-orange-600 text-white text-sm font-semibold rounded-md hover:bg-orange-700 disabled:opacity-60 transition-colors cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  {emailBusy
+                    ? 'Please wait...'
+                    : emailMode === 'signin'
+                    ? 'Unlock Admin Console'
+                    : 'Send Password Setup Email'}
+                </button>
+              </form>
+
+              <div className="pt-4 border-t border-slate-200 space-y-2.5">
+                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider text-center">
+                  Or unlock with authorized Google account
+                </p>
+                <button
+                  type="button"
+                  onClick={signInWithGoogle}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0B1B2B] text-white text-xs font-semibold rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <HardHat className="w-4 h-4 text-orange-400" />
+                  Sign In With Google Account
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed">
+              Admin Console authentication is not configured on this static host. Configure Firebase
+              Authentication or run the Node.js server with <code className="font-mono">LOCAL_ADMIN_PASSCODE</code>.
             </div>
           )}
 
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Authorized owner access</span>
+            <span>Password-protected console</span>
             <Link to="/" className="font-semibold text-[#0B1B2B] hover:text-orange-600">
               Return to Website
             </Link>
@@ -852,12 +792,14 @@ export const AdminPage: React.FC = () => {
           <Menu className="w-5 h-5" />
         </button>
         <span className="font-display font-bold text-sm truncate">Owner Dashboard</span>
-        <Link
-          to="/"
-          className="text-xs font-medium text-orange-400 hover:text-orange-300 whitespace-nowrap"
+        <button
+          type="button"
+          onClick={handleReturnToLiveSite}
+          title="Log out and view live website"
+          className="text-xs font-medium text-orange-400 hover:text-orange-300 whitespace-nowrap cursor-pointer"
         >
           Live Site
-        </Link>
+        </button>
       </header>
 
       {/* Mobile Sidebar Backdrop */}
@@ -941,13 +883,15 @@ export const AdminPage: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Link
-              to="/"
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-200 border border-white/15 rounded-md hover:bg-white/10 transition-colors"
+            <button
+              type="button"
+              onClick={handleReturnToLiveSite}
+              title="Log out and return to public website"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-200 border border-white/15 rounded-md hover:bg-white/10 transition-colors cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               Public Site
-            </Link>
+            </button>
             <button
               type="button"
               onClick={signOutAdmin}

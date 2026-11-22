@@ -8,7 +8,6 @@ import {
   MapPin,
   X,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { subscribePublishedProjects } from '../../services/firestoreService';
 import { fetchLocalPublicPortfolio } from '../../services/localMediaService';
 import { PROJECT_CATEGORIES, type ProjectRecord } from '../../types';
@@ -283,12 +282,12 @@ export const ProjectGallerySection: React.FC = () => {
                 : 'Try selecting a different engineering discipline or view all published projects.'}
             </p>
             {projects.length === 0 ? (
-              <Link
-                to="/admin"
+              <a
+                href="#contact"
                 className="inline-flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-orange-600 rounded-md hover:bg-orange-700 transition-colors"
               >
-                Open Owner Dashboard
-              </Link>
+                Request Project Consultation
+              </a>
             ) : (
               <button
                 type="button"

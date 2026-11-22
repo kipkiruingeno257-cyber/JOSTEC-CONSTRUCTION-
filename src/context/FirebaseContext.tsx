@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
@@ -387,18 +387,31 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setNewRecoveryKeyBanner(null);
   };
 
-  const signOutAdmin = async () => {
-    setAuthError(null);
-    setAuthErrorCode(null);
-    setNewRecoveryKeyBanner(null);
-    if (localAuthenticated) {
-      await logoutLocalAdmin();
+  const signingOutRef = useRef(false);
+
+  const signOutAdmin = useCallback(async () => {
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    try {
+      setAuthError(null);
+      setAuthErrorCode(null);
+      setNewRecoveryKeyBanner(null);
       setLocalAuthenticated(false);
+      setIsAdmin(false);
+      setIsBootstrappedAdmin(false);
+
+      const tasks: Promise<unknown>[] = [];
+      if (localAuthenticated || localServerAvailable) {
+        tasks.push(logoutLocalAdmin());
+      }
+      if (isFirebaseConfigured && auth?.currentUser) {
+        tasks.push(signOut(auth));
+      }
+      await Promise.allSettled(tasks);
+    } finally {
+      signingOutRef.current = false;
     }
-    if (isFirebaseConfigured && auth?.currentUser) {
-      await signOut(auth);
-    }
-  };
+  }, [localAuthenticated, localServerAvailable]);
 
   const clearAuthError = () => {
     setAuthError(null);

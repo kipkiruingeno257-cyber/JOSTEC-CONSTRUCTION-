@@ -21,7 +21,7 @@ const FUNCTIONAL_REQUIREMENTS = [
   'Dynamic Project Gallery synced live from Firestore & App Server with category filtering, lightbox inspection, and keyboard navigation',
   'Why Choose Us pillars & Admin-managed Verified Client Testimonials',
   'Contact & Quote section with Phone, WhatsApp, Email, Contact Form persistence & interactive Google Maps',
-  'Footer Admin Login icon button routing directly to protected /admin Owner Portal',
+  'Private Admin Console accessed exclusively via dedicated /admin URL with automatic logout upon returning to the live website',
   'Multi-mode Admin Sign-In without Google (Firebase Email & Password + Email Verification, Delegated Team Admin UID access, Workshop Passcode + Recovery Key, or optional Google Sign-In)',
   'Admin Dashboard with Overview KPIs, Multi-Source Image Upload (Mobile Camera, Desktop, Clipboard Paste, Direct URLs), Draft/Publish/Unpublish/Edit/Delete workflows, Access & Security Panel & Photo Appearance Studio',
 ];

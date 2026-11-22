@@ -1,9 +1,27 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { FirebaseProvider } from './context/FirebaseContext';
+import { FirebaseProvider, useFirebase } from './context/FirebaseContext';
+import { ADMIN_CONSOLE_PATH } from './lib/adminPath';
 import { AdminPage } from './pages/AdminPage';
 import { HomePage } from './pages/HomePage';
+
+function AdminAutoLogoutGuard() {
+  const location = useLocation();
+  const { authReady, localSessionReady, user, localAuthenticated, signOutAdmin } = useFirebase();
+
+  useEffect(() => {
+    if (!authReady || !localSessionReady) return;
+    const isAdminRoute =
+      location.pathname === ADMIN_CONSOLE_PATH ||
+      location.pathname.startsWith(`${ADMIN_CONSOLE_PATH}/`);
+    if (!isAdminRoute && (user || localAuthenticated)) {
+      void signOutAdmin();
+    }
+  }, [location.pathname, authReady, localSessionReady, user, localAuthenticated, signOutAdmin]);
+
+  return null;
+}
 
 export default function App() {
   const [mapsQuotaExceeded, setMapsQuotaExceeded] = useState(false);
@@ -34,9 +52,11 @@ export default function App() {
           </div>
         )}
         <BrowserRouter>
+          <AdminAutoLogoutGuard />
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/admin" element={<AdminPage />} />
+            <Route path={ADMIN_CONSOLE_PATH} element={<AdminPage />} />
+            <Route path={`${ADMIN_CONSOLE_PATH}/*`} element={<AdminPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

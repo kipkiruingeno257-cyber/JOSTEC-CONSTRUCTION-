@@ -995,6 +995,15 @@ async function startServer() {
     })
   );
 
+  // Crawler blocking for the private Admin Console URL & API routes
+  const rawAdminPath = (process.env.VITE_ADMIN_PATH || '/admin').trim();
+  const normalizedAdminPath = (rawAdminPath.startsWith('/') ? rawAdminPath : `/${rawAdminPath}`).replace(/\/+$/, '') || '/admin';
+  app.get('/robots.txt', (_req, res) => {
+    res
+      .type('text/plain')
+      .send(`User-agent: *\nDisallow: ${normalizedAdminPath}\nDisallow: /api/\n`);
+  });
+
   // --- Vite Dev Middleware or Static Production Assets ---
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
