@@ -122,10 +122,21 @@ interface LocalInquiry {
   updatedAtMs: number;
 }
 
+interface LocalSiteProfile {
+  displayName: string;
+  title: string;
+  headline: string;
+  description: string;
+  avatarUrl: string;
+  avatarStoragePath: string;
+  updatedAtMs: number;
+}
+
 interface LocalStore {
   projects: LocalProject[];
   testimonials: LocalTestimonial[];
   inquiries: LocalInquiry[];
+  profile?: LocalSiteProfile | null;
 }
 
 interface AuthConfig {
@@ -186,10 +197,11 @@ function readStore(): LocalStore {
       projects: Array.isArray(parsed.projects) ? parsed.projects : [],
       testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
       inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
+      profile: parsed.profile && typeof parsed.profile === 'object' ? parsed.profile : null,
     };
     return cachedStore;
   } catch {
-    cachedStore = { projects: [], testimonials: [], inquiries: [] };
+    cachedStore = { projects: [], testimonials: [], inquiries: [], profile: null };
     return cachedStore;
   }
 }
@@ -319,7 +331,12 @@ function hasTrustedMutationOrigin(req: express.Request): boolean {
 }
 
 function isSafeImageUrl(url: string): boolean {
-  return url.startsWith('https://') || url.startsWith('http://') || url.startsWith('/');
+  return (
+    url.startsWith('https://') ||
+    url.startsWith('http://') ||
+    url.startsWith('/') ||
+    /^data:image\/(jpeg|jpg|png|webp|avif);base64,[A-Za-z0-9+/=]+$/.test(url)
+  );
 }
 
 async function verifyFirebaseAdminToken(idToken: string): Promise<boolean> {
@@ -721,6 +738,7 @@ async function startServer() {
       testimonials: store.testimonials
         .filter((t) => t.status === 'published')
         .sort((a, b) => b.createdAtMs - a.createdAtMs),
+      profile: store.profile ?? null,
     });
   });
 
@@ -765,6 +783,7 @@ async function startServer() {
       projects: [...store.projects].sort((a, b) => b.createdAtMs - a.createdAtMs),
       testimonials: [...store.testimonials].sort((a, b) => b.createdAtMs - a.createdAtMs),
       inquiries: [...store.inquiries].sort((a, b) => b.createdAtMs - a.createdAtMs),
+      profile: store.profile ?? null,
     });
   });
 
@@ -984,6 +1003,88 @@ async function startServer() {
     store.inquiries = store.inquiries.filter((i) => i.id !== req.params.id);
     writeStore(store);
     res.json({ deleted: true });
+  });
+
+  app.put('/api/local/profile', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+    const b = req.body as Partial<LocalSiteProfile> & { removedStoragePath?: string };
+    const displayName = String(b.displayName || '').trim().slice(0, 100);
+    const title = String(b.title || '').trim().slice(0, 120);
+    const headline = String(b.headline || '').trim().slice(0, 160);
+    const description = String(b.description || '').trim().slice(0, 2500);
+    const avatarUrl = String(b.avatarUrl || '').trim().slice(0, 350000);
+    const avatarStoragePath = String(b.avatarStoragePath || 'default').trim().slice(0, 512);
+
+    if (
+      displayName.length < 2 ||
+      title.length < 2 ||
+      headline.length < 5 ||
+      description.length < 20
+    ) {
+      res.status(400).json({ error: 'Please complete all required profile fields.' });
+      return;
+    }
+    if (avatarUrl !== '' && !isSafeImageUrl(avatarUrl)) {
+      res.status(400).json({ error: 'Invalid profile image URL format.' });
+      return;
+    }
+
+    const store = readStore();
+    const prevStoragePath = store.profile?.avatarStoragePath;
+    const nextProfile: LocalSiteProfile = {
+      displayName,
+      title,
+      headline,
+      description,
+      avatarUrl,
+      avatarStoragePath: avatarUrl ? avatarStoragePath || 'external' : 'default',
+      updatedAtMs: Date.now(),
+    };
+
+    const cleanupPaths = new Set<string>();
+    if (b.removedStoragePath && b.removedStoragePath.startsWith('local:')) {
+      cleanupPaths.add(b.removedStoragePath);
+    }
+    if (
+      prevStoragePath &&
+      prevStoragePath.startsWith('local:') &&
+      prevStoragePath !== nextProfile.avatarStoragePath
+    ) {
+      cleanupPaths.add(prevStoragePath);
+    }
+    for (const sp of cleanupPaths) {
+      const fname = sp.slice(6);
+      const resolved = path.resolve(UPLOADS_DIR, fname);
+      if (resolved.startsWith(UPLOADS_DIR + path.sep) && fs.existsSync(resolved)) {
+        fs.unlinkSync(resolved);
+      }
+    }
+
+    store.profile = nextProfile;
+    writeStore(store);
+    res.json(nextProfile);
+  });
+
+  app.delete('/api/local/profile', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+    const store = readStore();
+    const prevStoragePath = store.profile?.avatarStoragePath;
+    if (prevStoragePath && prevStoragePath.startsWith('local:')) {
+      const fname = prevStoragePath.slice(6);
+      const resolved = path.resolve(UPLOADS_DIR, fname);
+      if (resolved.startsWith(UPLOADS_DIR + path.sep) && fs.existsSync(resolved)) {
+        fs.unlinkSync(resolved);
+      }
+    }
+    store.profile = null;
+    writeStore(store);
+    res.json({ reset: true });
   });
 
   // Fast cached static asset delivery for bundled site photography

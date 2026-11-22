@@ -69,6 +69,18 @@ export const SCHEMA_LIMITS = {
     messageMin: 10,
     messageMax: 2000,
   },
+  profile: {
+    displayNameMin: 2,
+    displayNameMax: 100,
+    titleMin: 2,
+    titleMax: 120,
+    headlineMin: 5,
+    headlineMax: 160,
+    descriptionMin: 20,
+    descriptionMax: 2500,
+    avatarUrlMax: 350000,
+    avatarStoragePathMax: 512,
+  },
 } as const;
 
 export type PhotoAspectRatio = '4/3' | '16/9' | '1/1' | '3/4';
@@ -155,3 +167,24 @@ export interface AdminUserRecord {
   role: 'admin';
   createdAt?: Timestamp | null;
 }
+
+export interface SiteProfileRecord {
+  displayName: string;
+  title: string;
+  headline: string;
+  description: string;
+  avatarUrl: string;
+  avatarStoragePath: string;
+  updatedAt?: Timestamp | null;
+  updatedAtMs?: number;
+}
+
+export const DEFAULT_SITE_PROFILE: SiteProfileRecord = {
+  displayName: COMPANY_INFO.engineerName,
+  title: COMPANY_INFO.engineerTitle,
+  headline: 'Direct Engineering Accountability From Blueprint to Final Weld',
+  description:
+    'Jenkins Structural & Metalworks is an independent civil construction engineering and custom metal fabrication firm. Led personally on-site by Eng. Mark Jenkins, PE, we bridge the gap between structural design calculations and heavy field execution—eliminating subcontractor handoff failures and inconsistent workmanship.\n\nWith over 18 years of hands-on structural framing, foundation work, certified arc and TIG/MIG welding, and automated security gate commissioning, every beam, column, hinge pin, and perimeter anchor is built to verifiable engineering tolerances.',
+  avatarUrl: '',
+  avatarStoragePath: 'default',
+};

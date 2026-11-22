@@ -7,6 +7,7 @@ import type {
   ProjectCategory,
   ProjectRecord,
   ProjectStatus,
+  SiteProfileRecord,
   TestimonialRecord,
   TestimonialStatus,
 } from '../types';
@@ -330,6 +331,7 @@ export async function logoutLocalAdmin(): Promise<void> {
 type PublicPortfolioResponse = {
   projects: ProjectRecord[];
   testimonials: TestimonialRecord[];
+  profile: SiteProfileRecord | null;
 };
 
 let portfolioInflight: Promise<PublicPortfolioResponse> | null = null;
@@ -350,12 +352,17 @@ export async function fetchLocalPublicPortfolio(): Promise<PublicPortfolioRespon
   portfolioInflight = (async () => {
     try {
       const res = await fetch('/api/local/portfolio');
-      if (!res.ok) return { projects: [], testimonials: [] };
-      const data = (await res.json()) as PublicPortfolioResponse;
+      if (!res.ok) return { projects: [], testimonials: [], profile: null };
+      const parsed = (await res.json()) as Partial<PublicPortfolioResponse>;
+      const data: PublicPortfolioResponse = {
+        projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+        testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
+        profile: parsed.profile ?? null,
+      };
       portfolioCache = { data, ts: Date.now() };
       return data;
     } catch {
-      return { projects: [], testimonials: [] };
+      return { projects: [], testimonials: [], profile: null };
     } finally {
       portfolioInflight = null;
     }
@@ -367,15 +374,27 @@ export async function fetchLocalAdminData(): Promise<{
   projects: ProjectRecord[];
   testimonials: TestimonialRecord[];
   inquiries: InquiryRecord[];
+  profile: SiteProfileRecord | null;
 }> {
-  const res = await fetch('/api/local/admin/data', { credentials: 'include' });
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch('/api/local/admin/data', {
+    credentials: 'include',
+    headers: authHeaders,
+  });
   if (!res.ok) {
     throw new Error('Unable to load local admin data.');
   }
-  return (await res.json()) as {
+  const parsed = (await res.json()) as Partial<{
     projects: ProjectRecord[];
     testimonials: TestimonialRecord[];
     inquiries: InquiryRecord[];
+    profile: SiteProfileRecord | null;
+  }>;
+  return {
+    projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+    testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
+    inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
+    profile: parsed.profile ?? null,
   };
 }
 
@@ -528,9 +547,50 @@ export async function updateLocalInquiryStatus(id: string, status: InquiryStatus
 }
 
 export async function deleteLocalInquiry(id: string): Promise<void> {
+  const authHeaders = await getAuthHeaders();
   const res = await fetch(`/api/local/inquiries/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     credentials: 'include',
+    headers: authHeaders,
   });
   if (!res.ok) throw new Error('Failed to delete local inquiry.');
+}
+
+export async function saveLocalSiteProfile(
+  payload: {
+    displayName: string;
+    title: string;
+    headline: string;
+    description: string;
+    avatarUrl: string;
+    avatarStoragePath: string;
+  },
+  removedStoragePath?: string
+): Promise<SiteProfileRecord> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch('/api/local/profile', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+    body: JSON.stringify({ ...payload, removedStoragePath }),
+  });
+  if (!res.ok) {
+    const b = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(b.error || 'Failed to save profile settings.');
+  }
+  invalidateLocalPortfolioCache();
+  return (await res.json()) as SiteProfileRecord;
+}
+
+export async function resetLocalSiteProfile(): Promise<void> {
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch('/api/local/profile', {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: authHeaders,
+  });
+  if (!res.ok) {
+    throw new Error('Failed to reset local profile.');
+  }
+  invalidateLocalPortfolioCache();
 }

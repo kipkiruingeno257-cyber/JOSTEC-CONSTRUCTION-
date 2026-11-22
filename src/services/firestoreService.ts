@@ -36,6 +36,7 @@ import {
   type ProjectCategory,
   type ProjectRecord,
   type ProjectStatus,
+  type SiteProfileRecord,
   type TestimonialRecord,
   type TestimonialStatus,
 } from '../types';
@@ -726,6 +727,151 @@ export async function revokeAdminAccess(uid: string): Promise<void> {
   const docPath = `admins/${uid}`;
   try {
     await deleteDoc(doc(db, 'admins', uid));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, docPath);
+  }
+}
+
+// --- Public Site Profile & Bio (/site_profile/main) ---
+
+export function subscribeSiteProfile(
+  onData: (profile: SiteProfileRecord | null) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  if (!isFirebaseConfigured || !db) {
+    onData(null);
+    return () => {};
+  }
+  const docPath = 'site_profile/main';
+  return onSnapshot(
+    doc(db, 'site_profile', 'main'),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onData(null);
+        return;
+      }
+      onData(snapshot.data() as SiteProfileRecord);
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
+      }
+      handleFirestoreError(error, OperationType.GET, docPath);
+    }
+  );
+}
+
+export async function uploadProfilePicture(
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<UploadedImageResult> {
+  if (!isFirebaseConfigured || !storage) {
+    throw new Error('Firebase Storage is not configured.');
+  }
+  const validationError = validateImageFiles([file]);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+  const safeName = `${Date.now()}_${sanitizeFileName(file.name)}`;
+  const objectPath = `profile/main/${safeName}`;
+  const storageRef = ref(storage, objectPath);
+
+  return new Promise<UploadedImageResult>((resolve, reject) => {
+    const uploadTask = uploadBytesResumable(storageRef, file, {
+      contentType: file.type || 'image/webp',
+    });
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        const total = Math.max(snapshot.totalBytes, 1);
+        onProgress?.(Math.min(100, Math.round((snapshot.bytesTransferred / total) * 100)));
+      },
+      (error) => {
+        const code = (error as { code?: string })?.code || 'storage/upload-failed';
+        reject(new Error(`Profile photo upload failed (${code}): ${error.message}`));
+      },
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          resolve({ url, storagePath: objectPath });
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
+}
+
+export interface SiteProfileInputPayload {
+  displayName: string;
+  title: string;
+  headline: string;
+  description: string;
+  avatarUrl: string;
+  avatarStoragePath: string;
+}
+
+export async function saveSiteProfile(
+  input: SiteProfileInputPayload,
+  removedStoragePath?: string
+): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    throw new Error('Firestore is not configured.');
+  }
+  const displayName = input.displayName.trim().slice(0, SCHEMA_LIMITS.profile.displayNameMax);
+  const title = input.title.trim().slice(0, SCHEMA_LIMITS.profile.titleMax);
+  const headline = input.headline.trim().slice(0, SCHEMA_LIMITS.profile.headlineMax);
+  const description = input.description.trim().slice(0, SCHEMA_LIMITS.profile.descriptionMax);
+  const avatarUrl = input.avatarUrl.trim().slice(0, SCHEMA_LIMITS.profile.avatarUrlMax);
+  const avatarStoragePath = (avatarUrl ? input.avatarStoragePath.trim() || 'external' : 'default').slice(
+    0,
+    SCHEMA_LIMITS.profile.avatarStoragePathMax
+  );
+
+  if (displayName.length < SCHEMA_LIMITS.profile.displayNameMin) {
+    throw new Error(`Display name must be at least ${SCHEMA_LIMITS.profile.displayNameMin} characters.`);
+  }
+  if (title.length < SCHEMA_LIMITS.profile.titleMin) {
+    throw new Error(`Role title must be at least ${SCHEMA_LIMITS.profile.titleMin} characters.`);
+  }
+  if (headline.length < SCHEMA_LIMITS.profile.headlineMin) {
+    throw new Error(`Headline must be at least ${SCHEMA_LIMITS.profile.headlineMin} characters.`);
+  }
+  if (description.length < SCHEMA_LIMITS.profile.descriptionMin) {
+    throw new Error(
+      `Profile description must be at least ${SCHEMA_LIMITS.profile.descriptionMin} characters.`
+    );
+  }
+
+  const docPath = 'site_profile/main';
+  try {
+    await setDoc(doc(db, 'site_profile', 'main'), {
+      displayName,
+      title,
+      headline,
+      description,
+      avatarUrl,
+      avatarStoragePath,
+      updatedAt: serverTimestamp(),
+    });
+    if (removedStoragePath && removedStoragePath !== avatarStoragePath) {
+      await deleteStorageObjects([removedStoragePath]);
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, docPath);
+  }
+}
+
+export async function resetSiteProfile(currentStoragePath?: string): Promise<void> {
+  if (!isFirebaseConfigured || !db) {
+    throw new Error('Firestore is not configured.');
+  }
+  const docPath = 'site_profile/main';
+  try {
+    if (currentStoragePath) {
+      await deleteStorageObjects([currentStoragePath]);
+    }
+    await deleteDoc(doc(db, 'site_profile', 'main'));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, docPath);
   }

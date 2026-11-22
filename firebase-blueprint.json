@@ -250,6 +250,63 @@
         }
       },
       "required": ["email", "displayName", "role", "createdAt"]
+    },
+    "SiteProfile": {
+      "title": "SiteProfile",
+      "description": "Public engineer portrait, role title, headline, and practice description displayed on the About section and managed by administrators.",
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "description": "Principal engineer or practice lead display name.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "title": {
+          "type": "string",
+          "description": "Professional role title.",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "headline": {
+          "type": "string",
+          "description": "About section heading.",
+          "minLength": 5,
+          "maxLength": 160
+        },
+        "description": {
+          "type": "string",
+          "description": "Multi-paragraph practice biography and engineering background.",
+          "minLength": 20,
+          "maxLength": 2500
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "HTTPS download URL, server media path, compressed WebP data URL, or empty string for default portrait.",
+          "minLength": 0,
+          "maxLength": 350000
+        },
+        "avatarStoragePath": {
+          "type": "string",
+          "description": "Storage path reference for cleanup on replacement.",
+          "minLength": 0,
+          "maxLength": 512
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last modification."
+        }
+      },
+      "required": [
+        "displayName",
+        "title",
+        "headline",
+        "description",
+        "avatarUrl",
+        "avatarStoragePath",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -268,6 +325,10 @@
     "/admins/{adminUid}": {
       "schema": { "$ref": "#/entities/AdminUser" },
       "description": "Authorized administrator directory; admin-only read and write."
+    },
+    "/site_profile/{profileId}": {
+      "schema": { "$ref": "#/entities/SiteProfile" },
+      "description": "Publicly readable single-document engineer profile and bio (/site_profile/main); admin-only write."
     }
   }
 }

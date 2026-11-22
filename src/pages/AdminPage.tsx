@@ -26,12 +26,14 @@ import {
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
+  UserCog,
   X,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AccessSecurityPanel } from '../components/admin/AccessSecurityPanel';
 import { InquiriesManager } from '../components/admin/InquiriesManager';
 import { PhotoAppearanceStudioTab } from '../components/admin/PhotoAppearanceStudioTab';
+import { ProfileManagerPanel } from '../components/admin/ProfileManagerPanel';
 import { ProjectFormPanel } from '../components/admin/ProjectFormPanel';
 import { ProjectsManager } from '../components/admin/ProjectsManager';
 import { SetupGuidePanel } from '../components/admin/SetupGuidePanel';
@@ -42,6 +44,7 @@ import {
   subscribeAllProjects,
   subscribeAllTestimonials,
   subscribeInquiries,
+  subscribeSiteProfile,
 } from '../services/firestoreService';
 import { fetchLocalAdminData } from '../services/localMediaService';
 import { getImageFilterCss, normalizePhotoAppearance } from '../utils/photoAppearance';
@@ -50,11 +53,13 @@ import {
   COMPANY_INFO,
   type InquiryRecord,
   type ProjectRecord,
+  type SiteProfileRecord,
   type TestimonialRecord,
 } from '../types';
 
 type AdminTab =
   | 'overview'
+  | 'profile'
   | 'upload'
   | 'projects'
   | 'appearance'
@@ -152,6 +157,7 @@ export const AdminPage: React.FC = () => {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [testimonials, setTestimonials] = useState<TestimonialRecord[]>([]);
   const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
+  const [siteProfile, setSiteProfile] = useState<SiteProfileRecord | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const notify = useCallback((type: 'success' | 'error', text: string) => {
@@ -171,16 +177,18 @@ export const AdminPage: React.FC = () => {
       setProjects(data.projects);
       setTestimonials(data.testimonials);
       setInquiries(data.inquiries);
+      setSiteProfile(data.profile ?? null);
     } catch (err) {
       notify('error', err instanceof Error ? err.message : 'Unable to load local admin data.');
     }
-  }, [activeAdminMode]);
+  }, [activeAdminMode, notify]);
 
   useEffect(() => {
     if (activeAdminMode === 'firebase') {
       const uidFilter = isBootstrappedAdmin ? undefined : user?.uid;
       const unsubProjects = subscribeAllProjects(setProjects, undefined, uidFilter);
       const unsubTestimonials = subscribeAllTestimonials(setTestimonials, undefined, uidFilter);
+      const unsubProfile = subscribeSiteProfile(setSiteProfile);
       const unsubInquiries = isBootstrappedAdmin
         ? subscribeInquiries(setInquiries)
         : () => {};
@@ -188,6 +196,7 @@ export const AdminPage: React.FC = () => {
       return () => {
         unsubProjects();
         unsubTestimonials();
+        unsubProfile();
         unsubInquiries();
       };
     }
@@ -200,6 +209,7 @@ export const AdminPage: React.FC = () => {
     setProjects([]);
     setTestimonials([]);
     setInquiries([]);
+    setSiteProfile(null);
   }, [activeAdminMode, isBootstrappedAdmin, user?.uid, refreshLocalData]);
 
   const stats = useMemo(() => {
@@ -762,6 +772,7 @@ export const AdminPage: React.FC = () => {
   // 4. Authorized Administrator Dashboard (Firebase or Local Server Mode)
   const navItems: { id: AdminTab; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'profile', label: 'Profile & Bio', icon: UserCog },
     { id: 'upload', label: editingProject ? 'Edit Project' : 'Upload Project', icon: ImagePlus },
     { id: 'projects', label: 'Project Gallery', icon: FolderKanban, badge: stats.totalProjects },
     { id: 'appearance', label: 'Photo Appearance', icon: SlidersHorizontal },
@@ -1060,6 +1071,14 @@ export const AdminPage: React.FC = () => {
                   <div className="flex items-center gap-4">
                     <button
                       type="button"
+                      onClick={() => setActiveTab('profile')}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0B1B2B] hover:text-orange-600 cursor-pointer"
+                    >
+                      <UserCog className="w-3.5 h-3.5 text-orange-600" />
+                      Edit Profile &amp; Bio
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setActiveTab('appearance')}
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0B1B2B] hover:text-orange-600 cursor-pointer"
                     >
@@ -1165,6 +1184,16 @@ export const AdminPage: React.FC = () => {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Profile Picture & Bio Tab */}
+          {activeTab === 'profile' && (
+            <ProfileManagerPanel
+              mode={activeAdminMode}
+              profile={siteProfile}
+              onNotify={notify}
+              onLocalMutated={refreshLocalData}
+            />
           )}
 
           {/* Upload / Edit Project Tab */}

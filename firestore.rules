@@ -130,6 +130,17 @@ service cloud.firestore {
         data.createdAt is timestamp;
     }
 
+    function isValidSiteProfile(data) {
+      return isValidString(data.displayName, 2, 100) &&
+        isValidString(data.title, 2, 120) &&
+        isValidString(data.headline, 5, 160) &&
+        isValidString(data.description, 20, 2500) &&
+        data.avatarUrl is string &&
+        data.avatarUrl.size() <= 350000 &&
+        isValidString(data.avatarStoragePath, 0, 512) &&
+        data.updatedAt is timestamp;
+    }
+
     // --- Collection: projects ---
     match /projects/{projectId} {
       allow get: if isValidId(projectId) && (existing().status == 'published' || isAdmin());
@@ -235,6 +246,33 @@ service cloud.firestore {
 
       allow update: if false;
       allow delete: if isVerifiedUser() && isValidId(adminUid) && isAdmin() && adminUid != request.auth.uid;
+    }
+
+    // --- Collection: site_profile ---
+    match /site_profile/{profileId} {
+      allow get: if isValidId(profileId) && profileId == 'main';
+      allow list: if false;
+
+      allow create: if isVerifiedUser() &&
+        isValidId(profileId) &&
+        profileId == 'main' &&
+        incoming().keys().hasAll(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']) &&
+        incoming().keys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']) &&
+        isValidSiteProfile(incoming()) &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+
+      allow update: if isVerifiedUser() &&
+        isValidId(profileId) &&
+        profileId == 'main' &&
+        incoming().keys().hasAll(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']) &&
+        incoming().keys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']) &&
+        isValidSiteProfile(incoming()) &&
+        incoming().updatedAt == request.time &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']);
+
+      allow delete: if isVerifiedUser() && isValidId(profileId) && profileId == 'main' && isAdmin();
     }
   }
 }
