@@ -29,6 +29,7 @@ import { normalizePhotoAppearance } from '../utils/photoAppearance';
 import {
   PROJECT_CATEGORIES,
   SCHEMA_LIMITS,
+  type AdminUserRecord,
   type InquiryRecord,
   type InquiryStatus,
   type PhotoAppearance,
@@ -95,15 +96,19 @@ export function subscribePublishedProjects(
 
 export function subscribeAllProjects(
   onData: (projects: ProjectRecord[]) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
+  authorUidFilter?: string
 ): Unsubscribe {
   if (!isFirebaseConfigured || !db) {
     onData([]);
     return () => {};
   }
   const path = 'projects';
+  const target = authorUidFilter
+    ? query(collection(db, path), where('authorId', '==', authorUidFilter))
+    : collection(db, path);
   return onSnapshot(
-    collection(db, path),
+    target,
     (snapshot) => {
       const records = snapshot.docs.map((d) => ({
         id: d.id,
@@ -150,15 +155,19 @@ export function subscribePublishedTestimonials(
 
 export function subscribeAllTestimonials(
   onData: (testimonials: TestimonialRecord[]) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
+  authorUidFilter?: string
 ): Unsubscribe {
   if (!isFirebaseConfigured || !db) {
     onData([]);
     return () => {};
   }
   const path = 'testimonials';
+  const target = authorUidFilter
+    ? query(collection(db, path), where('authorId', '==', authorUidFilter))
+    : collection(db, path);
   return onSnapshot(
-    collection(db, path),
+    target,
     (snapshot) => {
       const records = snapshot.docs.map((d) => ({
         id: d.id,
@@ -647,6 +656,76 @@ export async function deleteInquiry(id: string): Promise<void> {
   const docPath = `inquiries/${id}`;
   try {
     await deleteDoc(doc(db, 'inquiries', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, docPath);
+  }
+}
+
+// --- Admin Team Directory (/admins/{uid}) ---
+
+export function subscribeAdmins(
+  onData: (admins: AdminUserRecord[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  if (!isFirebaseConfigured || !db) {
+    onData([]);
+    return () => {};
+  }
+  const path = 'admins';
+  return onSnapshot(
+    collection(db, path),
+    (snapshot) => {
+      const records = snapshot.docs.map((d) => ({
+        uid: d.id,
+        ...(d.data() as Omit<AdminUserRecord, 'uid'>),
+      }));
+      onData(sortByCreatedAtDesc(records));
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
+      }
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
+}
+
+export async function grantAdminAccess(input: {
+  uid: string;
+  email: string;
+  displayName: string;
+}): Promise<void> {
+  const uid = input.uid.trim();
+  const email = input.email.trim().slice(0, 120);
+  const displayName = input.displayName.trim().slice(0, 100);
+
+  if (!/^[a-zA-Z0-9_-]{4,128}$/.test(uid)) {
+    throw new Error('Firebase User UID must be 4–128 alphanumeric, hyphen, or underscore characters.');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length < 5) {
+    throw new Error('Please enter a valid administrator email address.');
+  }
+  if (displayName.length < 2) {
+    throw new Error('Administrator display name must be at least 2 characters.');
+  }
+
+  const docPath = `admins/${uid}`;
+  try {
+    await setDoc(doc(db, 'admins', uid), {
+      email,
+      displayName,
+      role: 'admin',
+      createdAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, docPath);
+  }
+}
+
+export async function revokeAdminAccess(uid: string): Promise<void> {
+  const docPath = `admins/${uid}`;
+  try {
+    await deleteDoc(doc(db, 'admins', uid));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, docPath);
   }

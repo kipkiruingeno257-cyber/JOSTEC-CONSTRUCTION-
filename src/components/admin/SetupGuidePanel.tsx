@@ -22,7 +22,8 @@ const FUNCTIONAL_REQUIREMENTS = [
   'Why Choose Us pillars & Admin-managed Verified Client Testimonials',
   'Contact & Quote section with Phone, WhatsApp, Email, Contact Form persistence & interactive Google Maps',
   'Footer Admin Login icon button routing directly to protected /admin Owner Portal',
-  'Admin Dashboard with Overview KPIs, Multi-Source Image Upload (Mobile Camera, Desktop, Clipboard Paste, Direct URLs), Draft/Publish/Unpublish/Edit/Delete workflows & Photo Appearance Studio',
+  'Multi-mode Admin Sign-In without Google (Firebase Email & Password + Email Verification, Delegated Team Admin UID access, Workshop Passcode + Recovery Key, or optional Google Sign-In)',
+  'Admin Dashboard with Overview KPIs, Multi-Source Image Upload (Mobile Camera, Desktop, Clipboard Paste, Direct URLs), Draft/Publish/Unpublish/Edit/Delete workflows, Access & Security Panel & Photo Appearance Studio',
 ];
 
 const NON_FUNCTIONAL_REQUIREMENTS = [
@@ -34,7 +35,7 @@ const NON_FUNCTIONAL_REQUIREMENTS = [
   {
     title: 'Security & Access Control',
     detail:
-      'Firebase Auth RBAC + Firestore security rules validation, HttpOnly HMAC-signed local session cookies, server-side scrypt passcode hashing, magic-byte image inspection, and 10 MB / 12-file caps.',
+      'Firebase Auth RBAC + Firestore security rules validation, HttpOnly Partitioned cookies + in-memory Bearer session tokens, server-side scrypt passcode & recovery-key hashing, brute-force rate limiting, magic-byte image inspection, and 10 MB / 12-file caps.',
   },
   {
     title: 'Reliability & Fault Tolerance',

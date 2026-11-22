@@ -147,3 +147,11 @@ export interface InquiryRecord {
   createdAtMs?: number;
   updatedAtMs?: number;
 }
+
+export interface AdminUserRecord {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: 'admin';
+  createdAt?: Timestamp | null;
+}

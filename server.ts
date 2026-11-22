@@ -132,6 +132,41 @@ interface AuthConfig {
   sessionSecret: string;
   passcodeSalt?: string;
   passcodeHash?: string;
+  recoverySalt?: string;
+  recoveryHash?: string;
+}
+
+const loginFailures = new Map<string, { count: number; resetAt: number }>();
+const MAX_LOGIN_FAILURES = 5;
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+
+function getClientKey(req: express.Request): string {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || req.ip || 'unknown';
+}
+
+function getRateLimitRemainingSeconds(key: string): number {
+  const entry = loginFailures.get(key);
+  if (!entry) return 0;
+  if (Date.now() > entry.resetAt) {
+    loginFailures.delete(key);
+    return 0;
+  }
+  return entry.count >= MAX_LOGIN_FAILURES ? Math.ceil((entry.resetAt - Date.now()) / 1000) : 0;
+}
+
+function recordLoginFailure(key: string): void {
+  const now = Date.now();
+  const entry = loginFailures.get(key);
+  if (!entry || now > entry.resetAt) {
+    loginFailures.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+  } else {
+    entry.count += 1;
+  }
+}
+
+function clearLoginFailures(key: string): void {
+  loginFailures.delete(key);
 }
 
 let cachedStore: LocalStore | null = null;
@@ -166,27 +201,56 @@ function writeStore(store: LocalStore): void {
 }
 
 function getAuthConfig(): AuthConfig {
+  const envSecret = process.env.LOCAL_ADMIN_SESSION_SECRET?.trim();
   try {
     if (fs.existsSync(AUTH_PATH)) {
       const parsed = JSON.parse(fs.readFileSync(AUTH_PATH, 'utf8')) as AuthConfig;
-      if (parsed.sessionSecret) return parsed;
+      if (parsed.sessionSecret || envSecret) {
+        return {
+          ...parsed,
+          sessionSecret: envSecret || parsed.sessionSecret,
+        };
+      }
     }
   } catch {
     // Regenerate cleanly below if corrupt
   }
   const fresh: AuthConfig = {
-    sessionSecret: crypto.randomBytes(32).toString('hex'),
+    sessionSecret: envSecret || crypto.randomBytes(32).toString('hex'),
   };
+  fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(AUTH_PATH, JSON.stringify(fresh, null, 2), 'utf8');
   return fresh;
 }
 
 function saveAuthConfig(cfg: AuthConfig): void {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(AUTH_PATH, JSON.stringify(cfg, null, 2), 'utf8');
 }
 
-function hashPasscode(passcode: string, salt: string): string {
-  return crypto.scryptSync(passcode, salt, 64).toString('hex');
+function hashSecretValue(value: string, salt: string): string {
+  return crypto.scryptSync(value, salt, 64).toString('hex');
+}
+
+function verifySecretHash(candidate: string, salt: string, expectedHash: string): boolean {
+  const computed = hashSecretValue(candidate, salt);
+  const a = Buffer.from(computed);
+  const b = Buffer.from(expectedHash);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function generateRecoveryKey(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.randomBytes(8);
+  let raw = '';
+  for (let i = 0; i < 8; i++) {
+    raw += alphabet[bytes[i] % alphabet.length];
+  }
+  return `JSM-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+}
+
+function normalizeRecoveryKey(input: string): string {
+  return input.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 function signSessionToken(secret: string): string {
@@ -205,8 +269,11 @@ function verifySessionToken(token: string | undefined, secret: string): boolean 
   if (sig.length !== expected.length) return false;
   if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
   try {
-    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { exp?: number };
-    return typeof data.exp === 'number' && data.exp > Date.now();
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+      role?: string;
+      exp?: number;
+    };
+    return data.role === 'local-admin' && typeof data.exp === 'number' && data.exp > Date.now();
   } catch {
     return false;
   }
@@ -229,8 +296,26 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
 function buildSessionCookie(req: express.Request, value: string, maxAgeSeconds: number): string {
   const forwardedProto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
   const isHttps = req.secure || forwardedProto === 'https';
-  const sameSite = isHttps ? 'SameSite=None; Secure' : 'SameSite=Lax';
+  const sameSite = isHttps ? 'SameSite=None; Secure; Partitioned' : 'SameSite=Lax';
   return `${SESSION_COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; HttpOnly; ${sameSite}; Max-Age=${maxAgeSeconds}`;
+}
+
+function hasTrustedMutationOrigin(req: express.Request): boolean {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    return true;
+  }
+  if (req.headers['x-requested-with'] === 'XMLHttpRequest') {
+    return true;
+  }
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    const parsedOrigin = new URL(origin);
+    const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    return Boolean(hostHeader && parsedOrigin.host === hostHeader);
+  } catch {
+    return false;
+  }
 }
 
 function isSafeImageUrl(url: string): boolean {
@@ -264,17 +349,20 @@ async function verifyFirebaseAdminToken(idToken: string): Promise<boolean> {
 }
 
 async function isAuthorizedRequest(req: express.Request): Promise<boolean> {
-  const cookies = parseCookies(req.headers.cookie);
   const cfg = getAuthConfig();
-  if (verifySessionToken(cookies[SESSION_COOKIE_NAME], cfg.sessionSecret)) {
-    return true;
-  }
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7).trim();
+    if (verifySessionToken(token, cfg.sessionSecret)) {
+      return true;
+    }
     if (await verifyFirebaseAdminToken(token)) {
       return true;
     }
+  }
+  const cookies = parseCookies(req.headers.cookie);
+  if (verifySessionToken(cookies[SESSION_COOKIE_NAME], cfg.sessionSecret)) {
+    return hasTrustedMutationOrigin(req);
   }
   return false;
 }
@@ -389,23 +477,30 @@ async function startServer() {
     res.json({ deleted: true });
   });
 
-  // --- Standalone Local Mode Auth (No Firebase Required) ---
+  // --- Standalone Local Mode Auth (No Firebase / No Google Required) ---
   app.get('/api/local/session', (req, res) => {
     const cfg = getAuthConfig();
     const cookies = parseCookies(req.headers.cookie);
-    const hasPasscodeConfigured = Boolean(
-      process.env.LOCAL_ADMIN_PASSCODE || (cfg.passcodeSalt && cfg.passcodeHash)
-    );
-    const authenticated = verifySessionToken(cookies[SESSION_COOKIE_NAME], cfg.sessionSecret);
+    const authHeader = req.headers.authorization;
+    const bearer =
+      authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined;
+    const envControlled = Boolean(process.env.LOCAL_ADMIN_PASSCODE?.trim());
+    const hasPasscodeConfigured = Boolean(envControlled || (cfg.passcodeSalt && cfg.passcodeHash));
+    const hasRecoveryKey = Boolean(!envControlled && cfg.recoverySalt && cfg.recoveryHash);
+    const authenticated =
+      verifySessionToken(bearer, cfg.sessionSecret) ||
+      verifySessionToken(cookies[SESSION_COOKIE_NAME], cfg.sessionSecret);
     res.json({
       authenticated,
       hasPasscodeConfigured,
+      hasRecoveryKey,
+      envControlled,
     });
   });
 
   app.post('/api/local/setup', (req, res) => {
     const cfg = getAuthConfig();
-    if (process.env.LOCAL_ADMIN_PASSCODE || (cfg.passcodeSalt && cfg.passcodeHash)) {
+    if (process.env.LOCAL_ADMIN_PASSCODE?.trim() || (cfg.passcodeSalt && cfg.passcodeHash)) {
       res.status(409).json({ error: 'Local admin passcode is already configured. Please sign in.' });
       return;
     }
@@ -415,20 +510,42 @@ async function startServer() {
       return;
     }
     const salt = crypto.randomBytes(16).toString('hex');
-    const hash = hashPasscode(passcode, salt);
+    const hash = hashSecretValue(passcode, salt);
+    const recoveryKey = generateRecoveryKey();
+    const recoverySalt = crypto.randomBytes(16).toString('hex');
+    const recoveryHash = hashSecretValue(normalizeRecoveryKey(recoveryKey), recoverySalt);
+
     cfg.passcodeSalt = salt;
     cfg.passcodeHash = hash;
+    cfg.recoverySalt = recoverySalt;
+    cfg.recoveryHash = recoveryHash;
     saveAuthConfig(cfg);
 
     const token = signSessionToken(cfg.sessionSecret);
     res.setHeader('Set-Cookie', buildSessionCookie(req, token, 7 * 24 * 60 * 60));
-    res.status(201).json({ authenticated: true });
+    res.status(201).json({
+      authenticated: true,
+      token,
+      recoveryKey,
+      hasRecoveryKey: true,
+      envControlled: false,
+    });
   });
 
   app.post('/api/local/login', (req, res) => {
+    const clientKey = getClientKey(req);
+    const waitSeconds = getRateLimitRemainingSeconds(clientKey);
+    if (waitSeconds > 0) {
+      res.setHeader('Retry-After', String(waitSeconds));
+      res.status(429).json({
+        error: `Too many failed attempts. Try again in ${waitSeconds} seconds.`,
+      });
+      return;
+    }
+
     const cfg = getAuthConfig();
     const passcode = String((req.body as { passcode?: string })?.passcode || '').trim();
-    const envPasscode = process.env.LOCAL_ADMIN_PASSCODE;
+    const envPasscode = process.env.LOCAL_ADMIN_PASSCODE?.trim();
 
     let valid = false;
     if (envPasscode) {
@@ -436,23 +553,156 @@ async function startServer() {
       const b = Buffer.from(envPasscode);
       valid = a.length === b.length && crypto.timingSafeEqual(a, b);
     } else if (cfg.passcodeSalt && cfg.passcodeHash) {
-      const candidate = hashPasscode(passcode, cfg.passcodeSalt);
-      const a = Buffer.from(candidate);
-      const b = Buffer.from(cfg.passcodeHash);
-      valid = a.length === b.length && crypto.timingSafeEqual(a, b);
+      valid = verifySecretHash(passcode, cfg.passcodeSalt, cfg.passcodeHash);
     } else {
       res.status(400).json({ error: 'No local admin passcode configured yet.' });
       return;
     }
 
     if (!valid) {
+      recordLoginFailure(clientKey);
       res.status(401).json({ error: 'Invalid administrator passcode.' });
       return;
     }
 
+    clearLoginFailures(clientKey);
     const token = signSessionToken(cfg.sessionSecret);
     res.setHeader('Set-Cookie', buildSessionCookie(req, token, 7 * 24 * 60 * 60));
-    res.json({ authenticated: true });
+    res.json({
+      authenticated: true,
+      token,
+      hasRecoveryKey: Boolean(!envPasscode && cfg.recoverySalt && cfg.recoveryHash),
+      envControlled: Boolean(envPasscode),
+    });
+  });
+
+  app.post('/api/local/recover', (req, res) => {
+    const clientKey = getClientKey(req);
+    const waitSeconds = getRateLimitRemainingSeconds(clientKey);
+    if (waitSeconds > 0) {
+      res.setHeader('Retry-After', String(waitSeconds));
+      res.status(429).json({
+        error: `Too many failed attempts. Try again in ${waitSeconds} seconds.`,
+      });
+      return;
+    }
+
+    if (process.env.LOCAL_ADMIN_PASSCODE?.trim()) {
+      res.status(403).json({
+        error: 'Passcode is managed via server environment secret (LOCAL_ADMIN_PASSCODE).',
+      });
+      return;
+    }
+
+    const cfg = getAuthConfig();
+    if (!cfg.recoverySalt || !cfg.recoveryHash) {
+      res.status(400).json({ error: 'No recovery key has been generated for this server yet.' });
+      return;
+    }
+
+    const body = req.body as { recoveryKey?: string; newPasscode?: string };
+    const candidateKey = normalizeRecoveryKey(String(body?.recoveryKey || ''));
+    const newPasscode = String(body?.newPasscode || '').trim();
+
+    if (candidateKey.length < 8) {
+      res.status(400).json({ error: 'Enter your full recovery key (e.g., JSM-XXXX-XXXX).' });
+      return;
+    }
+    if (newPasscode.length < 6 || newPasscode.length > 64) {
+      res.status(400).json({ error: 'New passcode must be between 6 and 64 characters.' });
+      return;
+    }
+
+    if (!verifySecretHash(candidateKey, cfg.recoverySalt, cfg.recoveryHash)) {
+      recordLoginFailure(clientKey);
+      res.status(401).json({ error: 'Invalid recovery key.' });
+      return;
+    }
+
+    clearLoginFailures(clientKey);
+    const nextSalt = crypto.randomBytes(16).toString('hex');
+    const nextHash = hashSecretValue(newPasscode, nextSalt);
+    const nextRecoveryKey = generateRecoveryKey();
+    const nextRecoverySalt = crypto.randomBytes(16).toString('hex');
+    const nextRecoveryHash = hashSecretValue(
+      normalizeRecoveryKey(nextRecoveryKey),
+      nextRecoverySalt
+    );
+
+    cfg.passcodeSalt = nextSalt;
+    cfg.passcodeHash = nextHash;
+    cfg.recoverySalt = nextRecoverySalt;
+    cfg.recoveryHash = nextRecoveryHash;
+    saveAuthConfig(cfg);
+
+    const token = signSessionToken(cfg.sessionSecret);
+    res.setHeader('Set-Cookie', buildSessionCookie(req, token, 7 * 24 * 60 * 60));
+    res.json({
+      authenticated: true,
+      token,
+      recoveryKey: nextRecoveryKey,
+      hasRecoveryKey: true,
+    });
+  });
+
+  app.post('/api/local/passcode/change', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+    if (process.env.LOCAL_ADMIN_PASSCODE?.trim()) {
+      res.status(403).json({
+        error: 'Passcode is controlled by LOCAL_ADMIN_PASSCODE environment variable.',
+      });
+      return;
+    }
+
+    const cfg = getAuthConfig();
+    const body = req.body as { currentPasscode?: string; newPasscode?: string };
+    const currentPasscode = String(body?.currentPasscode || '').trim();
+    const newPasscode = String(body?.newPasscode || '').trim();
+
+    if (!cfg.passcodeSalt || !cfg.passcodeHash) {
+      res.status(400).json({ error: 'No local passcode configured.' });
+      return;
+    }
+    if (!verifySecretHash(currentPasscode, cfg.passcodeSalt, cfg.passcodeHash)) {
+      res.status(401).json({ error: 'Current passcode is incorrect.' });
+      return;
+    }
+    if (newPasscode.length < 6 || newPasscode.length > 64) {
+      res.status(400).json({ error: 'New passcode must be between 6 and 64 characters.' });
+      return;
+    }
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    cfg.passcodeSalt = salt;
+    cfg.passcodeHash = hashSecretValue(newPasscode, salt);
+    saveAuthConfig(cfg);
+
+    const token = signSessionToken(cfg.sessionSecret);
+    res.setHeader('Set-Cookie', buildSessionCookie(req, token, 7 * 24 * 60 * 60));
+    res.json({ updated: true, token });
+  });
+
+  app.post('/api/local/recovery/rotate', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Unauthorized.' });
+      return;
+    }
+    if (process.env.LOCAL_ADMIN_PASSCODE?.trim()) {
+      res.status(403).json({
+        error: 'Passcode is controlled by LOCAL_ADMIN_PASSCODE environment variable.',
+      });
+      return;
+    }
+    const cfg = getAuthConfig();
+    const recoveryKey = generateRecoveryKey();
+    const recoverySalt = crypto.randomBytes(16).toString('hex');
+    cfg.recoverySalt = recoverySalt;
+    cfg.recoveryHash = hashSecretValue(normalizeRecoveryKey(recoveryKey), recoverySalt);
+    saveAuthConfig(cfg);
+    res.json({ recoveryKey, hasRecoveryKey: true });
   });
 
   app.post('/api/local/logout', (req, res) => {

@@ -133,7 +133,7 @@ service cloud.firestore {
     // --- Collection: projects ---
     match /projects/{projectId} {
       allow get: if isValidId(projectId) && (existing().status == 'published' || isAdmin());
-      allow list: if existing().status == 'published' || isBootstrappedAdmin();
+      allow list: if existing().status == 'published' || isBootstrappedAdmin() || (isVerifiedUser() && existing().authorId == request.auth.uid);
 
       allow create: if isVerifiedUser() &&
         isValidId(projectId) &&
@@ -164,7 +164,7 @@ service cloud.firestore {
     // --- Collection: testimonials ---
     match /testimonials/{testimonialId} {
       allow get: if isValidId(testimonialId) && (existing().status == 'published' || isAdmin());
-      allow list: if existing().status == 'published' || isBootstrappedAdmin();
+      allow list: if existing().status == 'published' || isBootstrappedAdmin() || (isVerifiedUser() && existing().authorId == request.auth.uid);
 
       allow create: if isVerifiedUser() &&
         isValidId(testimonialId) &&

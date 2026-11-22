@@ -21,8 +21,17 @@ export interface MediaUploadOutput {
   storagePath: string;
 }
 
+// In-memory session token (never persisted to localStorage/sessionStorage)
+let localSessionToken: string | null = null;
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    'X-Requested-With': 'XMLHttpRequest',
+  };
+  if (localSessionToken) {
+    headers.Authorization = `Bearer ${localSessionToken}`;
+    return headers;
+  }
   const user = auth?.currentUser;
   if (user) {
     try {
@@ -154,44 +163,168 @@ export async function deleteAppServerMedia(storagePaths: string[]): Promise<void
 export interface LocalSessionStatus {
   authenticated: boolean;
   hasPasscodeConfigured: boolean;
+  hasRecoveryKey: boolean;
+  envControlled: boolean;
+  available: boolean;
 }
 
 export async function getLocalSession(): Promise<LocalSessionStatus> {
-  const res = await fetch('/api/local/session', { credentials: 'include' });
-  if (!res.ok) {
-    return { authenticated: false, hasPasscodeConfigured: false };
+  try {
+    const headers: Record<string, string> = {};
+    if (localSessionToken) {
+      headers.Authorization = `Bearer ${localSessionToken}`;
+    }
+    const res = await fetch('/api/local/session', {
+      credentials: 'include',
+      headers,
+    });
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok || !ct.includes('application/json')) {
+      return {
+        authenticated: false,
+        hasPasscodeConfigured: false,
+        hasRecoveryKey: false,
+        envControlled: false,
+        available: false,
+      };
+    }
+    const parsed = (await res.json()) as {
+      authenticated?: boolean;
+      hasPasscodeConfigured?: boolean;
+      hasRecoveryKey?: boolean;
+      envControlled?: boolean;
+    };
+    return {
+      authenticated: Boolean(parsed.authenticated),
+      hasPasscodeConfigured: Boolean(parsed.hasPasscodeConfigured),
+      hasRecoveryKey: Boolean(parsed.hasRecoveryKey),
+      envControlled: Boolean(parsed.envControlled),
+      available: true,
+    };
+  } catch {
+    return {
+      authenticated: false,
+      hasPasscodeConfigured: false,
+      hasRecoveryKey: false,
+      envControlled: false,
+      available: false,
+    };
   }
-  return (await res.json()) as LocalSessionStatus;
 }
 
-export async function setupLocalPasscode(passcode: string): Promise<void> {
+export async function setupLocalPasscode(passcode: string): Promise<{ recoveryKey?: string }> {
   const res = await fetch('/api/local/setup', {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     body: JSON.stringify({ passcode }),
   });
+  const body = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    token?: string;
+    recoveryKey?: string;
+  };
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error || 'Failed to configure local passcode.');
   }
+  if (body.token) {
+    localSessionToken = body.token;
+  }
+  return { recoveryKey: body.recoveryKey };
 }
 
-export async function loginLocalAdmin(passcode: string): Promise<void> {
+export async function loginLocalAdmin(
+  passcode: string
+): Promise<{ hasRecoveryKey: boolean; envControlled: boolean }> {
   const res = await fetch('/api/local/login', {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
     body: JSON.stringify({ passcode }),
   });
+  const body = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    token?: string;
+    hasRecoveryKey?: boolean;
+    envControlled?: boolean;
+  };
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error || 'Invalid local passcode.');
+  }
+  if (body.token) {
+    localSessionToken = body.token;
+  }
+  return {
+    hasRecoveryKey: Boolean(body.hasRecoveryKey),
+    envControlled: Boolean(body.envControlled),
+  };
+}
+
+export async function recoverLocalPasscode(
+  recoveryKey: string,
+  newPasscode: string
+): Promise<{ recoveryKey?: string }> {
+  const res = await fetch('/api/local/recover', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ recoveryKey, newPasscode }),
+  });
+  const body = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    token?: string;
+    recoveryKey?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.error || 'Unable to verify recovery key.');
+  }
+  if (body.token) {
+    localSessionToken = body.token;
+  }
+  return { recoveryKey: body.recoveryKey };
+}
+
+export async function changeLocalPasscode(
+  currentPasscode: string,
+  newPasscode: string
+): Promise<void> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/local/passcode/change', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ currentPasscode, newPasscode }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { error?: string; token?: string };
+  if (!res.ok) {
+    throw new Error(body.error || 'Failed to update passcode.');
+  }
+  if (body.token) {
+    localSessionToken = body.token;
   }
 }
 
+export async function rotateLocalRecoveryKey(): Promise<string> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/local/recovery/rotate', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...headers },
+  });
+  const body = (await res.json().catch(() => ({}))) as { error?: string; recoveryKey?: string };
+  if (!res.ok || !body.recoveryKey) {
+    throw new Error(body.error || 'Failed to generate recovery key.');
+  }
+  return body.recoveryKey;
+}
+
 export async function logoutLocalAdmin(): Promise<void> {
-  await fetch('/api/local/logout', { method: 'POST', credentials: 'include' });
+  localSessionToken = null;
+  await fetch('/api/local/logout', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+  });
 }
 
 type PublicPortfolioResponse = {
