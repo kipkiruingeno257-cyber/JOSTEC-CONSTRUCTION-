@@ -336,7 +336,7 @@ export const ProjectGallerySection: React.FC = () => {
                     {hasValidImage ? (
                       <FastImage
                         src={coverUrl}
-                        alt={project.title}
+                        alt={`${project.title} — ${project.category}${project.location ? ` in ${project.location}` : ''} (JOSTEC Construction Kenya)`}
                         priority={idx < 6}
                         darkBg={isBlueprint}
                         onError={() => markImageFailed(imgKey)}
@@ -513,7 +513,7 @@ export const ProjectGallerySection: React.FC = () => {
                     return (
                       <img
                         src={activeUrl}
-                        alt={`${activeProject.title} photograph ${activePhotoIndex + 1}`}
+                        alt={`${activeProject.title} — ${activeProject.category}${activeProject.location ? ` in ${activeProject.location}` : ''}, photo ${activePhotoIndex + 1} of ${activeProject.imageUrls.length}`}
                         decoding="sync"
                         fetchPriority="high"
                         referrerPolicy="no-referrer"
@@ -581,7 +581,7 @@ export const ProjectGallerySection: React.FC = () => {
                       ) : (
                         <img
                           src={url}
-                          alt={`Thumbnail ${idx + 1}`}
+                          alt={`${activeProject.title} (${activeProject.category}) thumbnail ${idx + 1}`}
                           loading="lazy"
                           decoding="async"
                           referrerPolicy="no-referrer"

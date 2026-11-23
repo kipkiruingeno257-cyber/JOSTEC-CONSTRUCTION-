@@ -79,7 +79,7 @@ export const HeroSection: React.FC = () => {
               src={heroImage.imageUrl}
               alt={
                 heroImage.caption ||
-                'Custom fabricated heavy-duty structural steelworks and construction project'
+                'JOSTEC Construction custom metal gates, certified welding, and structural steel construction services in Kenya'
               }
               priority
               darkBg

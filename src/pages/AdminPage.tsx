@@ -120,27 +120,6 @@ export const AdminPage: React.FC = () => {
     navigate('/');
   }, [signOutAdmin, navigate]);
 
-  // Prevent search engines from indexing the private Admin Console URL
-  useEffect(() => {
-    const existingMeta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
-    const prevContent = existingMeta?.getAttribute('content') ?? null;
-    const meta = existingMeta ?? document.createElement('meta');
-    meta.setAttribute('name', 'robots');
-    meta.setAttribute('content', 'noindex, nofollow');
-    if (!existingMeta) {
-      document.head.appendChild(meta);
-    }
-    return () => {
-      if (!existingMeta) {
-        meta.remove();
-      } else if (prevContent !== null) {
-        existingMeta.setAttribute('content', prevContent);
-      } else {
-        existingMeta.removeAttribute('content');
-      }
-    };
-  }, []);
-
   // Login Gate state
   const [emailMode, setEmailMode] = useState<EmailAuthMode>('signin');
   const [emailInput, setEmailInput] = useState('');

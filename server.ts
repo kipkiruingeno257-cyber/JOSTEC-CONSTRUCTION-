@@ -433,6 +433,24 @@ function sanitizeSafeSegment(val: string): string {
 async function startServer() {
   const app = express();
 
+  const rawAdminPath = (process.env.VITE_ADMIN_PATH || '/admin').trim();
+  const normalizedAdminPath =
+    (rawAdminPath.startsWith('/') ? rawAdminPath : `/${rawAdminPath}`).replace(/\/+$/, '') ||
+    '/admin';
+
+  app.use((req, res, next) => {
+    if (
+      req.path === '/admin' ||
+      req.path.startsWith('/admin/') ||
+      req.path === normalizedAdminPath ||
+      req.path.startsWith(`${normalizedAdminPath}/`) ||
+      req.path.startsWith('/api/')
+    ) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    }
+    next();
+  });
+
   app.use('/api/local', express.json({ limit: '1mb' }));
 
   // --- Media Upload (Direct Server Storage - Zero Firebase Storage Required) ---
@@ -1196,12 +1214,40 @@ async function startServer() {
   });
 
   // Crawler blocking for the private Admin Console URL & API routes
-  const rawAdminPath = (process.env.VITE_ADMIN_PATH || '/admin').trim();
-  const normalizedAdminPath = (rawAdminPath.startsWith('/') ? rawAdminPath : `/${rawAdminPath}`).replace(/\/+$/, '') || '/admin';
+  const CANONICAL_ORIGIN = 'https://jostec-construction.vercel.app';
+  const SITEMAP_PATHS = [
+    { path: '/', changefreq: 'weekly', priority: '1.0' },
+    { path: '/services', changefreq: 'weekly', priority: '0.9' },
+    { path: '/projects', changefreq: 'daily', priority: '0.9' },
+    { path: '/about', changefreq: 'monthly', priority: '0.8' },
+    { path: '/reviews', changefreq: 'weekly', priority: '0.7' },
+    { path: '/contact', changefreq: 'monthly', priority: '0.8' },
+  ];
+
   app.get('/robots.txt', (_req, res) => {
+    const disallowAdmin =
+      normalizedAdminPath === '/admin'
+        ? 'Disallow: /admin\nDisallow: /admin/'
+        : `Disallow: /admin\nDisallow: /admin/\nDisallow: ${normalizedAdminPath}\nDisallow: ${normalizedAdminPath}/`;
     res
-      .type('text/plain')
-      .send(`User-agent: *\nDisallow: ${normalizedAdminPath}\nDisallow: /api/\n`);
+      .type('text/plain; charset=utf-8')
+      .set('Cache-Control', 'public, max-age=3600')
+      .send(
+        `User-agent: *\nAllow: /\n${disallowAdmin}\nDisallow: /api/\n\nSitemap: ${CANONICAL_ORIGIN}/sitemap.xml\n`
+      );
+  });
+
+  app.get('/sitemap.xml', (_req, res) => {
+    const lastmod = new Date().toISOString().slice(0, 10);
+    const urlsXml = SITEMAP_PATHS.map(
+      (u) =>
+        `  <url>\n    <loc>${CANONICAL_ORIGIN}${u.path}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>${u.changefreq}</changefreq>\n    <priority>${u.priority}</priority>\n  </url>`
+    ).join('\n');
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlsXml}\n</urlset>\n`;
+    res
+      .type('application/xml; charset=utf-8')
+      .set('Cache-Control', 'public, max-age=3600')
+      .send(xml);
   });
 
   // --- Vite Dev Middleware or Static Production Assets ---

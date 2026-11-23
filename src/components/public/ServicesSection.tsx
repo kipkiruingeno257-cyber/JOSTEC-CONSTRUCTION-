@@ -186,7 +186,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                 src={constructionImg.imageUrl}
                 alt={
                   constructionImg.caption ||
-                  'Commercial steel framing & reinforced foundations project'
+                  'Construction services in Kenya featuring commercial steel framing and reinforced concrete foundations'
                 }
                 priority={constructionImg.imageUrl.startsWith('data:')}
                 darkBg
@@ -218,7 +218,10 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
               <FastImage
                 key={weldingImg.imageUrl}
                 src={weldingImg.imageUrl}
-                alt={weldingImg.caption || 'Certified structural welding in workshop'}
+                alt={
+                  weldingImg.caption ||
+                  'Certified welding services in Kenya and heavy steel metal fabrication workshop'
+                }
                 priority={weldingImg.imageUrl.startsWith('data:')}
                 darkBg
                 className="w-full h-full object-cover"
@@ -248,7 +251,10 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
               <FastImage
                 key={perimeterImg.imageUrl}
                 src={perimeterImg.imageUrl}
-                alt={perimeterImg.caption || 'Gates & palisade perimeter security fencing'}
+                alt={
+                  perimeterImg.caption ||
+                  'Permanent gate installation, custom metal gates, and perimeter security fencing in Kenya'
+                }
                 priority={perimeterImg.imageUrl.startsWith('data:')}
                 darkBg
                 className="w-full h-full object-cover"

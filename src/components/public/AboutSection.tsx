@@ -81,7 +81,7 @@ export const AboutSection: React.FC = () => {
                 <FastImage
                   key={customAvatar}
                   src={customAvatar}
-                  alt={`${profile.displayName} — ${profile.title}`}
+                  alt={`${profile.displayName} — ${profile.title} for construction and metal fabrication services in Kenya`}
                   priority
                   darkBg
                   className="w-full h-full object-cover object-top"

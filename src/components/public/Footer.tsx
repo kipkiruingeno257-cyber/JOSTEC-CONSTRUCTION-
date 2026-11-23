@@ -1,7 +1,15 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { COMPANY_INFO } from '../../types';
 
 export const Footer: React.FC = () => {
+  const scrollToSection = (sectionId: string) => {
+    const el = document.getElementById(sectionId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <footer className="bg-[#0B1B2B] text-slate-300 border-t border-white/10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -24,18 +32,41 @@ export const Footer: React.FC = () => {
           <div className="md:col-span-3 space-y-2 text-sm">
             <p className="font-semibold text-white mb-2">Navigation</p>
             <div className="flex flex-col space-y-1.5">
-              <a href="#about" className="hover:text-white transition-colors">
+              <Link
+                to="/about"
+                onClick={() => scrollToSection('about')}
+                className="hover:text-white transition-colors"
+              >
                 About Us
-              </a>
-              <a href="#services" className="hover:text-white transition-colors">
+              </Link>
+              <Link
+                to="/services"
+                onClick={() => scrollToSection('services')}
+                className="hover:text-white transition-colors"
+              >
                 Our Services
-              </a>
-              <a href="#projects" className="hover:text-white transition-colors">
+              </Link>
+              <Link
+                to="/projects"
+                onClick={() => scrollToSection('projects')}
+                className="hover:text-white transition-colors"
+              >
                 Project Gallery
-              </a>
-              <a href="#contact" className="hover:text-white transition-colors">
+              </Link>
+              <Link
+                to="/reviews"
+                onClick={() => scrollToSection('testimonials')}
+                className="hover:text-white transition-colors"
+              >
+                Client Reviews
+              </Link>
+              <Link
+                to="/contact"
+                onClick={() => scrollToSection('contact')}
+                className="hover:text-white transition-colors"
+              >
                 Contact &amp; Quotes
-              </a>
+              </Link>
             </div>
           </div>
         </div>

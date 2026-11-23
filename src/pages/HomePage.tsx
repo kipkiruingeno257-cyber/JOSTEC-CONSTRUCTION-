@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AboutSection } from '../components/public/AboutSection';
 import { ContactSection } from '../components/public/ContactSection';
 import { Footer } from '../components/public/Footer';
@@ -8,10 +8,28 @@ import { ProjectGallerySection } from '../components/public/ProjectGallerySectio
 import { ServicesSection } from '../components/public/ServicesSection';
 import { TestimonialsSection } from '../components/public/TestimonialsSection';
 import { WhyChooseUsSection } from '../components/public/WhyChooseUsSection';
+import type { PublicSectionKey } from '../lib/seoConfig';
 import type { ProjectCategory } from '../types';
 
-export const HomePage: React.FC = () => {
+interface HomePageProps {
+  initialSection?: PublicSectionKey;
+}
+
+export const HomePage: React.FC<HomePageProps> = ({ initialSection = 'top' }) => {
   const [selectedQuoteService, setSelectedQuoteService] = useState<ProjectCategory | ''>('');
+
+  useEffect(() => {
+    if (initialSection === 'top') {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(initialSection);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [initialSection]);
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-slate-900">
