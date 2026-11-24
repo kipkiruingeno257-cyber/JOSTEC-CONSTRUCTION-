@@ -1,8 +1,12 @@
+import dotenv from 'dotenv';
 import express from 'express';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 import { verifyFirebaseAdminBearer } from './api/_lib/auth.ts';
 import {
   checkInquiryEmailRateLimit,

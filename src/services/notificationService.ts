@@ -34,13 +34,20 @@ export async function notifyInquiryEmail(payload: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const data = (await res.json().catch(() => null)) as
-      | (Partial<EmailDispatchResponse> & { error?: string })
-      | null;
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    const rawText = await res.text().catch(() => '');
+    let data: (Partial<EmailDispatchResponse> & { error?: string }) | null = null;
+    if (rawText && (contentType.includes('application/json') || rawText.trim().startsWith('{'))) {
+      try {
+        data = JSON.parse(rawText) as Partial<EmailDispatchResponse> & { error?: string };
+      } catch {
+        data = null;
+      }
+    }
 
     if (!res.ok) {
       const errorMessage =
-        data?.detail || data?.error || `Email service returned status ${res.status}.`;
+        data?.detail || data?.error || `Email service returned HTTP ${res.status}.`;
       return {
         ok: false,
         status: data?.status || (res.status === 429 ? 'rate_limited' : 'failed'),
@@ -53,17 +60,37 @@ export async function notifyInquiryEmail(payload: {
       };
     }
 
+    if (!data || typeof data.ok !== 'boolean') {
+      const msg =
+        'Email notification endpoint (/api/notify-inquiry) did not return a JSON API response. If you are viewing a static preview or an older deployment, redeploy with the /api serverless functions and configure RESEND_API_KEY and NOTIFICATION_TO_EMAIL.';
+      return {
+        ok: false,
+        status: 'failed',
+        provider: 'none',
+        detail: msg,
+        error: msg,
+        httpStatus: res.status,
+      };
+    }
+
+    const ok = data.ok;
     return {
-      ok: Boolean(data?.ok),
-      duplicate: Boolean(data?.duplicate),
-      skippedSpam: Boolean(data?.skippedSpam),
-      status: data?.status || 'sent',
-      provider: data?.provider || 'resend',
-      recipient: data?.recipient,
-      subject: data?.subject,
-      detail: data?.detail || 'Inquiry email notification processed.',
-      adminEmail: data?.adminEmail,
-      clientEmail: data?.clientEmail,
+      ok,
+      duplicate: Boolean(data.duplicate),
+      skippedSpam: Boolean(data.skippedSpam),
+      status: data.status || (ok ? 'sent' : 'failed'),
+      provider: data.provider || 'resend',
+      recipient: data.recipient,
+      subject: data.subject,
+      detail:
+        data.detail ||
+        data.error ||
+        (ok
+          ? 'Inquiry email notification sent.'
+          : 'Email delivery failed without a detailed error message.'),
+      error: data.error,
+      adminEmail: data.adminEmail,
+      clientEmail: data.clientEmail,
       httpStatus: res.status,
     };
   } catch {
@@ -85,6 +112,12 @@ export async function fetchNotificationStatus(): Promise<NotificationStatusRespo
     cache: 'no-store',
     headers,
   });
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      'Notification status endpoint (/api/notifications/status) returned non-JSON content. Ensure the backend API server is active.'
+    );
+  }
   const data = (await res.json().catch(() => ({}))) as Partial<NotificationStatusResponse> & {
     error?: string;
   };
@@ -113,27 +146,37 @@ export async function sendTestEmailNotification(
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(recipientEmail ? { recipientEmail } : {}),
   });
-  const data = (await res.json().catch(() => ({}))) as Partial<EmailDispatchResponse> & {
-    error?: string;
-  };
-  if (!res.ok) {
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  const data = contentType.includes('application/json')
+    ? ((await res.json().catch(() => null)) as
+        | (Partial<EmailDispatchResponse> & { error?: string })
+        | null)
+    : null;
+
+  if (!res.ok || !data || typeof data.ok !== 'boolean') {
+    const errDetail =
+      data?.detail ||
+      data?.error ||
+      (!data
+        ? 'Notification test endpoint (/api/notifications/test) is unreachable on this host.'
+        : 'Unable to send test notification.');
     return {
       ok: false,
-      status: data.status || 'failed',
-      provider: data.provider || 'none',
-      recipient: data.recipient,
-      subject: data.subject,
-      detail: data.detail || data.error || 'Unable to send test notification.',
-      error: data.error || data.detail,
+      status: data?.status || 'failed',
+      provider: data?.provider || 'none',
+      recipient: data?.recipient,
+      subject: data?.subject,
+      detail: errDetail,
+      error: data?.error || errDetail,
     };
   }
   return {
-    ok: Boolean(data.ok),
-    status: data.status || 'sent',
+    ok: data.ok,
+    status: data.status || (data.ok ? 'sent' : 'failed'),
     provider: data.provider || 'none',
     recipient: data.recipient,
     subject: data.subject,
-    detail: data.detail || 'Test email delivered.',
+    detail: data.detail || (data.ok ? 'Test email delivered.' : 'Test email delivery failed.'),
   };
 }
 
@@ -152,26 +195,36 @@ export async function sendAdminClientReply(payload: {
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(payload),
   });
-  const data = (await res.json().catch(() => ({}))) as Partial<EmailDispatchResponse> & {
-    error?: string;
-  };
-  if (!res.ok) {
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  const data = contentType.includes('application/json')
+    ? ((await res.json().catch(() => null)) as
+        | (Partial<EmailDispatchResponse> & { error?: string })
+        | null)
+    : null;
+
+  if (!res.ok || !data || typeof data.ok !== 'boolean') {
+    const errDetail =
+      data?.detail ||
+      data?.error ||
+      (!data
+        ? 'Reply endpoint (/api/notifications/reply) is unreachable on this host.'
+        : 'Unable to send reply email.');
     return {
       ok: false,
-      status: data.status || 'failed',
-      provider: data.provider || 'none',
-      recipient: data.recipient,
-      subject: data.subject,
-      detail: data.detail || data.error || 'Unable to send reply email.',
-      error: data.error || data.detail,
+      status: data?.status || 'failed',
+      provider: data?.provider || 'none',
+      recipient: data?.recipient,
+      subject: data?.subject,
+      detail: errDetail,
+      error: data?.error || errDetail,
     };
   }
   return {
-    ok: Boolean(data.ok),
-    status: data.status || 'sent',
+    ok: data.ok,
+    status: data.status || (data.ok ? 'sent' : 'failed'),
     provider: data.provider || 'none',
     recipient: data.recipient,
     subject: data.subject,
-    detail: data.detail || 'Reply delivered to client.',
+    detail: data.detail || (data.ok ? 'Reply delivered to client.' : 'Reply email delivery failed.'),
   };
 }

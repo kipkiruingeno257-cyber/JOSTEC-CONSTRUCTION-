@@ -92,8 +92,13 @@ export async function parseJsonBody<T = Record<string, unknown>>(
   if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
     return req.body as T;
   }
+  if (Buffer.isBuffer(req.body)) {
+    const raw = req.body.toString('utf8').trim();
+    return (raw ? JSON.parse(raw) : {}) as T;
+  }
   if (typeof req.body === 'string') {
-    return JSON.parse(req.body) as T;
+    const raw = req.body.trim();
+    return (raw ? JSON.parse(raw) : {}) as T;
   }
 
   return new Promise<T>((resolve, reject) => {
