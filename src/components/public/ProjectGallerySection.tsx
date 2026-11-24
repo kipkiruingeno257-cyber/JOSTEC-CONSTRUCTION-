@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowUpRight,
   Building2,
   ChevronLeft,
   ChevronRight,
   FolderOpen,
   Images,
   MapPin,
+  Search,
   X,
 } from 'lucide-react';
 import { subscribePublishedProjects } from '../../services/firestoreService';
@@ -44,13 +46,20 @@ function preloadProjectPhotos(urls: string[], limit = 6) {
   });
 }
 
-export const ProjectGallerySection: React.FC = () => {
+interface ProjectGallerySectionProps {
+  onRequestSimilarQuote?: (project: ProjectRecord) => void;
+}
+
+export const ProjectGallerySection: React.FC<ProjectGallerySectionProps> = ({
+  onRequestSimilarQuote,
+}) => {
   const [firebaseProjects, setFirebaseProjects] = useState<ProjectRecord[]>([]);
   const [localProjects, setLocalProjects] = useState<ProjectRecord[]>([]);
   const [localLoaded, setLocalLoaded] = useState(false);
   const [firebaseLoaded, setFirebaseLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
@@ -102,9 +111,20 @@ export const ProjectGallerySection: React.FC = () => {
   }, [firebaseProjects, localProjects]);
 
   const filteredProjects = useMemo(() => {
-    if (selectedCategory === 'All') return projects;
-    return projects.filter((p) => p.category === selectedCategory);
-  }, [projects, selectedCategory]);
+    const q = searchQuery.trim().toLowerCase();
+    return projects.filter((p) => {
+      const matchesCat = selectedCategory === 'All' || p.category === selectedCategory;
+      if (!matchesCat) return false;
+      if (!q) return true;
+      return (
+        p.title.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        (p.location ?? '').toLowerCase().includes(q) ||
+        (p.completionYear ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [projects, selectedCategory, searchQuery]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { All: projects.length };
@@ -197,10 +217,25 @@ export const ProjectGallerySection: React.FC = () => {
               perimeter enclosures published directly from the site workshop.
             </p>
           </div>
-          <div className="text-sm text-slate-500 font-mono tabular-nums shrink-0">
-            {loading
-              ? 'Loading projects...'
-              : `${filteredProjects.length} Project${filteredProjects.length === 1 ? '' : 's'} Shown`}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+            {projects.length > 0 && (
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="search"
+                  aria-label="Search published projects"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search title or location..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:bg-white focus:border-orange-600"
+                />
+              </div>
+            )}
+            <div className="text-sm text-slate-500 font-mono tabular-nums whitespace-nowrap">
+              {loading
+                ? 'Loading projects...'
+                : `${filteredProjects.length} Project${filteredProjects.length === 1 ? '' : 's'} Shown`}
+            </div>
           </div>
         </div>
 
@@ -281,24 +316,27 @@ export const ProjectGallerySection: React.FC = () => {
                 ? 'Projects uploaded and published by the business owner in the Administrator Dashboard appear here automatically in real time.'
                 : 'Try selecting a different engineering discipline or view all published projects.'}
             </p>
-            {projects.length === 0 ? (
-              <a
-                href="#contact"
-                className="inline-flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-orange-600 rounded-md hover:bg-orange-700 transition-colors"
-              >
-                Request Project Consultation
-              </a>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setSelectedCategory('All')}
-                className="inline-flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-[#0B1B2B] rounded-md hover:bg-slate-800 transition-colors"
-              >
-                Show All Categories
-              </button>
-            )}
-          </div>
-        )}
+              {projects.length === 0 ? (
+                <a
+                  href="#contact"
+                  className="inline-flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-orange-600 rounded-md hover:bg-orange-700 transition-colors"
+                >
+                  Request Project Consultation
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory('All');
+                    setSearchQuery('');
+                  }}
+                  className="inline-flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-[#0B1B2B] rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Reset Filters
+                </button>
+              )}
+            </div>
+          )}
 
         {/* Dynamic Project Grid */}
         {!loading && !loadError && filteredProjects.length > 0 && (
@@ -596,13 +634,40 @@ export const ProjectGallerySection: React.FC = () => {
               </div>
             )}
 
-            <div className="p-6">
-              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                Engineering Scope &amp; Details
-              </h4>
-              <p className="text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-line">
-                {activeProject.description}
-              </p>
+            <div className="p-6 space-y-5">
+              <div>
+                <div className="flex items-center justify-between gap-4 mb-2">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Engineering Scope &amp; Details
+                  </h4>
+                  {activeProject.imageUrls && activeProject.imageUrls.length > 0 && (
+                    <span className="text-xs font-mono tabular-nums text-slate-500">
+                      Photo {activePhotoIndex + 1} of {activeProject.imageUrls.length}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-line">
+                  {activeProject.description}
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-500">
+                  Planning a comparable gate, welding, or construction build?
+                </p>
+                <a
+                  href="#contact"
+                  onClick={() => {
+                    const projectToQuote = activeProject;
+                    closePreview();
+                    onRequestSimilarQuote?.(projectToQuote);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-orange-600 text-white text-xs sm:text-sm font-semibold rounded-md hover:bg-orange-700 transition-colors whitespace-nowrap shrink-0"
+                >
+                  Request Similar Project Quote
+                  <ArrowUpRight className="w-4 h-4" />
+                </a>
+              </div>
             </div>
           </div>
         </div>

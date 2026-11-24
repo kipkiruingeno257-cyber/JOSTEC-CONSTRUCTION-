@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { useSiteProfile } from '../../hooks/useSiteProfile';
 import { COMPANY_INFO } from '../../types';
 
 export const Navbar: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
+  const profile = useSiteProfile();
+
+  const brandName = profile.companyName?.trim() || COMPANY_INFO.shortName;
 
   const navItems = [
     { label: 'About', to: '/about', sectionId: 'about' },
@@ -13,6 +18,17 @@ export const Navbar: React.FC = () => {
     { label: 'Reviews', to: '/reviews', sectionId: 'testimonials' },
     { label: 'Contact', to: '/contact', sectionId: 'contact' },
   ];
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileOpen]);
 
   const handleNavClick = (sectionId: string) => {
     setMobileOpen(false);
@@ -31,7 +47,7 @@ export const Navbar: React.FC = () => {
           onClick={() => handleNavClick('top')}
           className="font-display text-lg font-bold tracking-tight text-[#0B1B2B] whitespace-nowrap shrink-0"
         >
-          {COMPANY_INFO.shortName}
+          {brandName}
         </Link>
 
         {/* Zone 2: 5 concise single-line nav links */}
@@ -39,16 +55,24 @@ export const Navbar: React.FC = () => {
           aria-label="Primary Navigation"
           className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600"
         >
-          {navItems.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={() => handleNavClick(item.sectionId)}
-              className="hover:text-[#0B1B2B] hover:underline underline-offset-4 decoration-orange-600 decoration-2 transition-colors whitespace-nowrap shrink-0 py-1"
-            >
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const isActive = location.pathname === item.to;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => handleNavClick(item.sectionId)}
+                className={`transition-colors whitespace-nowrap shrink-0 py-1 underline-offset-4 decoration-orange-600 decoration-2 ${
+                  isActive
+                    ? 'text-[#0B1B2B] font-semibold underline'
+                    : 'hover:text-[#0B1B2B] hover:underline'
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Zone 3: 1 primary action + mobile menu toggle */}
@@ -65,7 +89,7 @@ export const Navbar: React.FC = () => {
             onClick={() => setMobileOpen((prev) => !prev)}
             aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
             aria-expanded={mobileOpen}
-            className="md:hidden inline-flex items-center justify-center w-11 h-11 rounded-md text-slate-700 hover:bg-slate-100 transition-colors"
+            className="md:hidden inline-flex items-center justify-center w-11 h-11 rounded-md text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -75,16 +99,24 @@ export const Navbar: React.FC = () => {
       {/* Mobile Navigation Drawer */}
       {mobileOpen && (
         <div className="md:hidden border-t border-slate-200 bg-white px-4 py-4 space-y-1">
-          {navItems.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={() => handleNavClick(item.sectionId)}
-              className="block px-3 py-3 text-base font-medium text-slate-700 hover:bg-slate-50 hover:text-[#0B1B2B] rounded-md"
-            >
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const isActive = location.pathname === item.to;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => handleNavClick(item.sectionId)}
+                className={`block px-3 py-3 text-base font-medium rounded-md ${
+                  isActive
+                    ? 'bg-slate-100 text-[#0B1B2B] font-semibold'
+                    : 'text-slate-700 hover:bg-slate-50 hover:text-[#0B1B2B]'
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
           <div className="pt-3 mt-3 border-t border-slate-100 flex flex-col gap-2">
             <Link
               to="/contact"

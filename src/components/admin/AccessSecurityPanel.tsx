@@ -466,7 +466,7 @@ export const AccessSecurityPanel: React.FC<AccessSecurityPanelProps> = ({ mode, 
                     maxLength={100}
                     value={newAdminName}
                     onChange={(e) => setNewAdminName(e.target.value)}
-                    placeholder="e.g., Mark Jenkins"
+                    placeholder="Full name"
                     className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white text-slate-900 focus:outline-none focus:border-orange-600"
                   />
                 </div>

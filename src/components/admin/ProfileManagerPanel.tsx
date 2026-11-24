@@ -54,6 +54,13 @@ export const ProfileManagerPanel: React.FC<ProfileManagerPanelProps> = ({
   const [title, setTitle] = useState(effectiveSource.title);
   const [headline, setHeadline] = useState(effectiveSource.headline);
   const [description, setDescription] = useState(effectiveSource.description);
+  const [companyName, setCompanyName] = useState(effectiveSource.companyName ?? 'JOSTEC Construction');
+  const [phoneDisplay, setPhoneDisplay] = useState(effectiveSource.phoneDisplay ?? '');
+  const [whatsappNumber, setWhatsappNumber] = useState(effectiveSource.whatsappNumber ?? '');
+  const [contactEmail, setContactEmail] = useState(effectiveSource.contactEmail ?? '');
+  const [workshopAddress, setWorkshopAddress] = useState(effectiveSource.workshopAddress ?? '');
+  const [cityRegion, setCityRegion] = useState(effectiveSource.cityRegion ?? 'Kenya');
+  const [operatingHours, setOperatingHours] = useState(effectiveSource.operatingHours ?? '');
 
   const [savedAvatarUrl, setSavedAvatarUrl] = useState(effectiveSource.avatarUrl || '');
   const [savedStoragePath, setSavedStoragePath] = useState(
@@ -85,6 +92,13 @@ export const ProfileManagerPanel: React.FC<ProfileManagerPanelProps> = ({
     setTitle(src.title);
     setHeadline(src.headline);
     setDescription(src.description);
+    setCompanyName(src.companyName ?? 'JOSTEC Construction');
+    setPhoneDisplay(src.phoneDisplay ?? '');
+    setWhatsappNumber(src.whatsappNumber ?? '');
+    setContactEmail(src.contactEmail ?? '');
+    setWorkshopAddress(src.workshopAddress ?? '');
+    setCityRegion(src.cityRegion ?? 'Kenya');
+    setOperatingHours(src.operatingHours ?? '');
     setSavedAvatarUrl(src.avatarUrl || '');
     setSavedStoragePath(src.avatarStoragePath || 'default');
     setRemovedStoragePath(undefined);
@@ -276,6 +290,13 @@ export const ProfileManagerPanel: React.FC<ProfileManagerPanelProps> = ({
         description: cleanDescription,
         avatarUrl: nextAvatarUrl,
         avatarStoragePath: nextAvatarUrl ? nextStoragePath || 'external' : 'default',
+        companyName: companyName.trim(),
+        phoneDisplay: phoneDisplay.trim(),
+        whatsappNumber: whatsappNumber.replace(/[^0-9]/g, ''),
+        contactEmail: contactEmail.trim(),
+        workshopAddress: workshopAddress.trim(),
+        cityRegion: cityRegion.trim(),
+        operatingHours: operatingHours.trim(),
       };
 
       if (mode === 'local') {
@@ -672,6 +693,119 @@ export const ProfileManagerPanel: React.FC<ProfileManagerPanelProps> = ({
             <p className="text-[11px] text-slate-500 mt-1">
               Tip: Press Enter twice (blank line) to separate paragraphs on the live About section.
             </p>
+          </div>
+
+          {/* Public Business & Workshop Contact Info */}
+          <div className="pt-5 border-t border-slate-200 space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-[#0B1B2B]">
+                Public Business &amp; Workshop Contacts (Optional)
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Only verified contact details entered here appear on the public Contact section, Footer, and search metadata. Leave blank to receive leads exclusively via the quote form.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Business Display Name
+                </label>
+                <input
+                  type="text"
+                  maxLength={SCHEMA_LIMITS.profile.companyNameMax}
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="JOSTEC Construction"
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Service Region / County (Kenya)
+                </label>
+                <input
+                  type="text"
+                  maxLength={SCHEMA_LIMITS.profile.cityRegionMax}
+                  value={cityRegion}
+                  onChange={(e) => setCityRegion(e.target.value)}
+                  placeholder="e.g. Nairobi & Surrounding Counties, Kenya"
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Public Phone Number
+                </label>
+                <input
+                  type="tel"
+                  maxLength={SCHEMA_LIMITS.profile.phoneDisplayMax}
+                  value={phoneDisplay}
+                  onChange={(e) => setPhoneDisplay(e.target.value)}
+                  placeholder="e.g. +254 7XX XXX XXX"
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  WhatsApp Digits (Country Code + Number)
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={SCHEMA_LIMITS.profile.whatsappNumberMax}
+                  value={whatsappNumber}
+                  onChange={(e) => setWhatsappNumber(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="e.g. 2547XXXXXXXX"
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-md text-sm font-mono text-slate-900 focus:outline-none focus:border-orange-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Public Contact Email
+                </label>
+                <input
+                  type="email"
+                  maxLength={SCHEMA_LIMITS.profile.contactEmailMax}
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  placeholder="e.g. info@yourdomain.com"
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Workshop Operating Hours
+                </label>
+                <input
+                  type="text"
+                  maxLength={SCHEMA_LIMITS.profile.operatingHoursMax}
+                  value={operatingHours}
+                  onChange={(e) => setOperatingHours(e.target.value)}
+                  placeholder="e.g. Mon–Sat · 08:00 – 17:00"
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Physical Workshop / Office Address
+              </label>
+              <input
+                type="text"
+                maxLength={SCHEMA_LIMITS.profile.workshopAddressMax}
+                value={workshopAddress}
+                onChange={(e) => setWorkshopAddress(e.target.value)}
+                placeholder="Enter your physical workshop or yard location"
+                className="w-full px-3.5 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+              />
+            </div>
           </div>
 
           {saving && uploadProgress > 0 && uploadProgress < 100 && (

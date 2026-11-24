@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useSiteProfile } from '../hooks/useSiteProfile';
 import {
   buildPublicJsonLd,
   DEFAULT_OG_IMAGE,
@@ -39,6 +40,8 @@ function upsertCanonical(href: string | null): void {
 }
 
 export const SeoHead: React.FC<SeoHeadProps> = ({ pathname, noindex = false }) => {
+  const profile = useSiteProfile();
+
   useEffect(() => {
     if (noindex) {
       document.title = 'Admin Console | JOSTEC Construction';
@@ -51,6 +54,7 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ pathname, noindex = false }) =
 
     const meta = resolvePublicSeo(pathname);
     const canonicalUrl = `${SITE_CANONICAL_ORIGIN}${meta.path}`;
+    const brandName = profile.companyName?.trim() || SITE_BRAND_NAME;
 
     document.title = meta.title;
     upsertMeta('name', 'description', meta.description);
@@ -66,7 +70,7 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ pathname, noindex = false }) =
 
     // Open Graph
     upsertMeta('property', 'og:type', 'website');
-    upsertMeta('property', 'og:site_name', SITE_BRAND_NAME);
+    upsertMeta('property', 'og:site_name', brandName);
     upsertMeta('property', 'og:locale', 'en_KE');
     upsertMeta('property', 'og:url', canonicalUrl);
     upsertMeta('property', 'og:title', meta.title);
@@ -88,11 +92,11 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ pathname, noindex = false }) =
       scriptEl.type = 'application/ld+json';
       document.head.appendChild(scriptEl);
     }
-    scriptEl.textContent = JSON.stringify(buildPublicJsonLd(meta));
+    scriptEl.textContent = JSON.stringify(buildPublicJsonLd(meta, profile));
 
     // Remove base static script once dynamic one is hydrated to prevent duplicate entity graphs
     document.getElementById('jostec-base-schema')?.remove();
-  }, [pathname, noindex]);
+  }, [pathname, noindex, profile]);
 
   return null;
 };

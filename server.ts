@@ -129,6 +129,13 @@ interface LocalSiteProfile {
   description: string;
   avatarUrl: string;
   avatarStoragePath: string;
+  companyName?: string;
+  phoneDisplay?: string;
+  whatsappNumber?: string;
+  contactEmail?: string;
+  workshopAddress?: string;
+  cityRegion?: string;
+  operatingHours?: string;
   updatedAtMs: number;
 }
 
@@ -1056,6 +1063,13 @@ async function startServer() {
     const description = String(b.description || '').trim().slice(0, 2500);
     const avatarUrl = String(b.avatarUrl || '').trim().slice(0, 350000);
     const avatarStoragePath = String(b.avatarStoragePath || 'default').trim().slice(0, 512);
+    const companyName = String(b.companyName || '').trim().slice(0, 120);
+    const phoneDisplay = String(b.phoneDisplay || '').trim().slice(0, 40);
+    const whatsappNumber = String(b.whatsappNumber || '').replace(/[^0-9]/g, '').slice(0, 30);
+    const contactEmail = String(b.contactEmail || '').trim().slice(0, 120);
+    const workshopAddress = String(b.workshopAddress || '').trim().slice(0, 200);
+    const cityRegion = String(b.cityRegion || '').trim().slice(0, 120);
+    const operatingHours = String(b.operatingHours || '').trim().slice(0, 80);
 
     if (
       displayName.length < 2 ||
@@ -1080,6 +1094,13 @@ async function startServer() {
       description,
       avatarUrl,
       avatarStoragePath: avatarUrl ? avatarStoragePath || 'external' : 'default',
+      companyName,
+      phoneDisplay,
+      whatsappNumber,
+      contactEmail,
+      workshopAddress,
+      cityRegion,
+      operatingHours,
       updatedAtMs: Date.now(),
     };
 

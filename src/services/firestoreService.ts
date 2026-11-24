@@ -816,6 +816,13 @@ export interface SiteProfileInputPayload {
   description: string;
   avatarUrl: string;
   avatarStoragePath: string;
+  companyName?: string;
+  phoneDisplay?: string;
+  whatsappNumber?: string;
+  contactEmail?: string;
+  workshopAddress?: string;
+  cityRegion?: string;
+  operatingHours?: string;
 }
 
 export async function saveSiteProfile(
@@ -834,6 +841,13 @@ export async function saveSiteProfile(
     0,
     SCHEMA_LIMITS.profile.avatarStoragePathMax
   );
+  const companyName = (input.companyName ?? '').trim().slice(0, SCHEMA_LIMITS.profile.companyNameMax);
+  const phoneDisplay = (input.phoneDisplay ?? '').trim().slice(0, SCHEMA_LIMITS.profile.phoneDisplayMax);
+  const whatsappNumber = (input.whatsappNumber ?? '').replace(/[^0-9]/g, '').slice(0, SCHEMA_LIMITS.profile.whatsappNumberMax);
+  const contactEmail = (input.contactEmail ?? '').trim().slice(0, SCHEMA_LIMITS.profile.contactEmailMax);
+  const workshopAddress = (input.workshopAddress ?? '').trim().slice(0, SCHEMA_LIMITS.profile.workshopAddressMax);
+  const cityRegion = (input.cityRegion ?? '').trim().slice(0, SCHEMA_LIMITS.profile.cityRegionMax);
+  const operatingHours = (input.operatingHours ?? '').trim().slice(0, SCHEMA_LIMITS.profile.operatingHoursMax);
 
   if (displayName.length < SCHEMA_LIMITS.profile.displayNameMin) {
     throw new Error(`Display name must be at least ${SCHEMA_LIMITS.profile.displayNameMin} characters.`);
@@ -859,6 +873,13 @@ export async function saveSiteProfile(
       description,
       avatarUrl,
       avatarStoragePath,
+      companyName,
+      phoneDisplay,
+      whatsappNumber,
+      contactEmail,
+      workshopAddress,
+      cityRegion,
+      operatingHours,
       updatedAt: serverTimestamp(),
     });
     broadcastSiteProfileChange({
@@ -868,6 +889,13 @@ export async function saveSiteProfile(
       description,
       avatarUrl,
       avatarStoragePath,
+      companyName,
+      phoneDisplay,
+      whatsappNumber,
+      contactEmail,
+      workshopAddress,
+      cityRegion,
+      operatingHours,
       updatedAtMs: Date.now(),
     });
     if (removedStoragePath && removedStoragePath !== avatarStoragePath) {

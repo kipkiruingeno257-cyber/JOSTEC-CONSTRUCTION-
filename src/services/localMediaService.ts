@@ -576,6 +576,13 @@ export async function saveLocalSiteProfile(
     description: string;
     avatarUrl: string;
     avatarStoragePath: string;
+    companyName?: string;
+    phoneDisplay?: string;
+    whatsappNumber?: string;
+    contactEmail?: string;
+    workshopAddress?: string;
+    cityRegion?: string;
+    operatingHours?: string;
   },
   removedStoragePath?: string
 ): Promise<SiteProfileRecord> {

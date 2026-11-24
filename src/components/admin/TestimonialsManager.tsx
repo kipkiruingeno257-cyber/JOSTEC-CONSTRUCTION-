@@ -155,7 +155,7 @@ export const TestimonialsManager: React.FC<TestimonialsManagerProps> = ({
             maxLength={SCHEMA_LIMITS.testimonial.clientNameMax}
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
-            placeholder="e.g. Samuel K. Alvarez"
+            placeholder="Client's verified full name"
             className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:border-orange-600"
           />
         </div>
@@ -170,7 +170,7 @@ export const TestimonialsManager: React.FC<TestimonialsManagerProps> = ({
             maxLength={SCHEMA_LIMITS.testimonial.clientRoleMax}
             value={clientRole}
             onChange={(e) => setClientRole(e.target.value)}
-            placeholder="e.g. Operations Manager, Horizon Cold Storage"
+            placeholder="e.g. Property Owner or Facilities Manager"
             className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:border-orange-600"
           />
         </div>

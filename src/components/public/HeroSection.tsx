@@ -131,24 +131,24 @@ export const HeroSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Full-width 4-column structural credentials strip */}
+      {/* Full-width 4-column structural capabilities strip */}
       <div className="border-t border-white/10 bg-[#081522]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
           <div>
-            <p className="font-mono text-2xl font-semibold text-white tabular-nums">18+ Years</p>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1">Field Construction &amp; Steelwork</p>
+            <p className="font-mono text-2xl font-semibold text-white tabular-nums">Kenya-Wide</p>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1">On-Site Construction &amp; Installation</p>
           </div>
           <div>
-            <p className="font-mono text-2xl font-semibold text-white tabular-nums">AWS D1.1</p>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1">Structural Welding Standards</p>
+            <p className="font-mono text-2xl font-semibold text-white tabular-nums">9 Disciplines</p>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1">Civil Works, Welding &amp; Metal Gates</p>
           </div>
           <div>
-            <p className="font-mono text-2xl font-semibold text-white tabular-nums">340+ Sites</p>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1">Commercial &amp; Residential Builds</p>
+            <p className="font-mono text-2xl font-semibold text-white tabular-nums">Heavy-Gauge</p>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1">Anti-Corrosion Primed Steelwork</p>
           </div>
           <div>
-            <p className="font-mono text-2xl font-semibold text-white tabular-nums">100% In-House</p>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1">Fabrication, Anchoring &amp; Commissioning</p>
+            <p className="font-mono text-2xl font-semibold text-white tabular-nums">In-House</p>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1">Site Survey, Fabrication &amp; Handover</p>
           </div>
         </div>
       </div>

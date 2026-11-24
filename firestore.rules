@@ -138,6 +138,13 @@ service cloud.firestore {
         data.avatarUrl is string &&
         data.avatarUrl.size() <= 350000 &&
         isValidString(data.avatarStoragePath, 0, 512) &&
+        (!('companyName' in data) || isValidString(data.companyName, 0, 120)) &&
+        (!('phoneDisplay' in data) || isValidString(data.phoneDisplay, 0, 40)) &&
+        (!('whatsappNumber' in data) || isValidString(data.whatsappNumber, 0, 30)) &&
+        (!('contactEmail' in data) || isValidString(data.contactEmail, 0, 120)) &&
+        (!('workshopAddress' in data) || isValidString(data.workshopAddress, 0, 200)) &&
+        (!('cityRegion' in data) || isValidString(data.cityRegion, 0, 120)) &&
+        (!('operatingHours' in data) || isValidString(data.operatingHours, 0, 80)) &&
         data.updatedAt is timestamp;
     }
 
@@ -269,7 +276,7 @@ service cloud.firestore {
         isValidId(profileId) &&
         profileId == 'main' &&
         incoming().keys().hasAll(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']) &&
-        incoming().keys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']) &&
+        incoming().keys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'companyName', 'phoneDisplay', 'whatsappNumber', 'contactEmail', 'workshopAddress', 'cityRegion', 'operatingHours', 'updatedAt']) &&
         isValidSiteProfile(incoming()) &&
         incoming().updatedAt == request.time &&
         isAdmin();
@@ -278,11 +285,11 @@ service cloud.firestore {
         isValidId(profileId) &&
         profileId == 'main' &&
         incoming().keys().hasAll(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']) &&
-        incoming().keys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']) &&
+        incoming().keys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'companyName', 'phoneDisplay', 'whatsappNumber', 'contactEmail', 'workshopAddress', 'cityRegion', 'operatingHours', 'updatedAt']) &&
         isValidSiteProfile(incoming()) &&
         incoming().updatedAt == request.time &&
         isAdmin() &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'updatedAt']);
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'title', 'headline', 'description', 'avatarUrl', 'avatarStoragePath', 'companyName', 'phoneDisplay', 'whatsappNumber', 'contactEmail', 'workshopAddress', 'cityRegion', 'operatingHours', 'updatedAt']);
 
       allow delete: if isVerifiedUser() && isValidId(profileId) && profileId == 'main' && isAdmin();
     }

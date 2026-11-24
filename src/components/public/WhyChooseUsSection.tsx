@@ -5,44 +5,71 @@ const PILLARS = [
   {
     icon: Shield,
     title: 'Engineering Professionalism',
-    metric: '100% Spec-Verified',
+    metric: 'Site-Measured',
     description:
       'Every project begins with accurate site measurement, gauge calculation, and written material specifications before a single steel beam is cut.',
   },
   {
     icon: Wrench,
     title: 'Precision Workmanship',
-    metric: 'AWS D1.1 Standards',
+    metric: 'Full-Penetration Welds',
     description:
-      'Full-penetration structural welds, ground-flush architectural seams, and jig-aligned gate frames that operate smoothly without binding.',
+      'Clean structural welds, ground-flush architectural seams, and jig-aligned gate frames that operate smoothly without sagging or binding.',
   },
   {
     icon: Award,
     title: 'Long-Term Durability',
     metric: 'Multi-Coat Protection',
     description:
-      'Heavy-wall steel sections treated with zinc-rich anti-corrosion primer and industrial topcoats to withstand weather and heavy daily duty.',
+      'Heavy-wall steel sections treated with zinc-rich anti-corrosion primer and industrial topcoats to withstand weather and daily mechanical duty.',
   },
   {
     icon: Clock,
     title: 'Schedule Reliability',
-    metric: '98% On-Time Handover',
+    metric: 'Planned Delivery',
     description:
-      'Disciplined workshop fabrication schedules paired with coordinated site installation windows so your construction timeline stays intact.',
+      'Coordinated workshop fabrication timelines paired with scheduled site installation windows so your construction milestones stay on track.',
   },
   {
     icon: CheckCircle2,
-    title: 'Customer Satisfaction',
-    metric: 'Direct Owner Oversight',
+    title: 'Direct Accountability',
+    metric: 'Single-Point Lead',
     description:
-      'You work directly with the lead engineer from initial estimate through final safety check and post-installation maintenance support.',
+      'You coordinate directly with the build team from initial site inspection through final anchoring, commissioning, and maintenance support.',
+  },
+];
+
+const WORKFLOW_STEPS = [
+  {
+    step: '01',
+    title: 'Site Survey & Dimensions',
+    detail:
+      'We inspect ground levels, pillar foundations, clear spans, and structural load conditions before drafting specifications.',
+  },
+  {
+    step: '02',
+    title: 'Material Spec & Written Quote',
+    detail:
+      'Receive a transparent breakdown covering steel gauge, concrete mix, hardware selection, surface coating, and timeline.',
+  },
+  {
+    step: '03',
+    title: 'Workshop Fabrication & Priming',
+    detail:
+      'Frames, trusses, and custom metal gates are cut, welded, ground flush, and treated with anti-corrosion primer prior to dispatch.',
+  },
+  {
+    step: '04',
+    title: 'On-Site Anchoring & Handover',
+    detail:
+      'Permanent masonry anchoring, track leveling, balance checks, and final operational walkthrough with the property owner.',
   },
 ];
 
 export const WhyChooseUsSection: React.FC = () => {
   return (
     <section className="py-20 lg:py-24 bg-[#0B1B2B] text-white border-b border-white/10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-16">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
           <div className="lg:col-span-4">
             <p className="text-sm font-semibold text-orange-400 tracking-wide mb-3">
@@ -83,6 +110,48 @@ export const WhyChooseUsSection: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* 4-Step Execution Workflow */}
+        <div className="pt-14 border-t border-white/10">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+            <div>
+              <p className="text-sm font-semibold text-orange-400 tracking-wide mb-2">
+                How We Execute Every Build
+              </p>
+              <h3
+                className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-white"
+                style={{ textWrap: 'balance' }}
+              >
+                From Site Measurement to Permanent Handover
+              </h3>
+            </div>
+            <a
+              href="#contact"
+              className="text-sm font-semibold text-orange-400 hover:text-orange-300 transition-colors whitespace-nowrap shrink-0"
+            >
+              Schedule a Site Survey &rarr;
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {WORKFLOW_STEPS.map((item) => (
+              <div
+                key={item.step}
+                className="bg-[#081522] border border-white/10 rounded-lg p-6 flex flex-col justify-between"
+              >
+                <div>
+                  <span className="font-mono text-xs font-semibold text-orange-400 tabular-nums block mb-3">
+                    {item.step}.
+                  </span>
+                  <h4 className="font-display text-base font-bold text-white mb-2">
+                    {item.title}
+                  </h4>
+                  <p className="text-sm text-slate-300 leading-relaxed">{item.detail}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

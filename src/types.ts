@@ -21,19 +21,18 @@ export type InquiryStatus = 'new' | 'reviewed' | 'archived';
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'kipkiruingeno257@gmail.com';
 
 export const COMPANY_INFO = {
-  name: 'Jenkins Structural & Metalworks',
-  shortName: 'Jenkins Structural',
-  engineerName: 'Eng. Mark Jenkins, PE',
-  engineerTitle: 'Principal Structural Engineer & Master Fabricator',
-  phoneDisplay: '+1 (555) 234-8910',
-  phoneHref: 'tel:+15552348910',
-  whatsappNumber: '15552348910',
-  whatsappHref: 'https://wa.me/15552348910?text=Hello%20Jenkins%20Structural%2C%20I%20would%20like%20to%20request%20a%20project%20quote.',
-  email: 'projects@jenkinsstructural.example',
-  address: '480 Foundry Industrial Pkwy, Suite B, Metro Industrial Park',
-  cityRegion: 'Atlanta Metro Industrial District, GA',
-  coordinates: { lat: 33.749, lng: -84.388 },
-  hours: 'Mon–Sat · 07:00 – 18:00',
+  name: 'JOSTEC Construction',
+  shortName: 'JOSTEC Construction',
+  engineerName: 'JOSTEC Construction Team',
+  engineerTitle: 'Civil Construction, Certified Welding & Metal Fabrication',
+  phoneDisplay: '',
+  phoneHref: '',
+  whatsappNumber: '',
+  whatsappHref: '',
+  email: '',
+  address: '',
+  cityRegion: 'Kenya',
+  hours: '',
 };
 
 // Volumetric boundaries synchronized verbatim with firebase-blueprint.json & firestore.rules
@@ -80,6 +79,13 @@ export const SCHEMA_LIMITS = {
     descriptionMax: 2500,
     avatarUrlMax: 350000,
     avatarStoragePathMax: 512,
+    companyNameMax: 120,
+    phoneDisplayMax: 40,
+    whatsappNumberMax: 30,
+    contactEmailMax: 120,
+    workshopAddressMax: 200,
+    cityRegionMax: 120,
+    operatingHoursMax: 80,
   },
   siteImage: {
     imageUrlMax: 350000,
@@ -180,6 +186,13 @@ export interface SiteProfileRecord {
   description: string;
   avatarUrl: string;
   avatarStoragePath: string;
+  companyName?: string;
+  phoneDisplay?: string;
+  whatsappNumber?: string;
+  contactEmail?: string;
+  workshopAddress?: string;
+  cityRegion?: string;
+  operatingHours?: string;
   updatedAt?: Timestamp | null;
   updatedAtMs?: number;
 }
@@ -187,11 +200,18 @@ export interface SiteProfileRecord {
 export const DEFAULT_SITE_PROFILE: SiteProfileRecord = {
   displayName: COMPANY_INFO.engineerName,
   title: COMPANY_INFO.engineerTitle,
-  headline: 'Direct Engineering Accountability From Blueprint to Final Weld',
+  headline: 'Direct Engineering Accountability From Site Survey to Final Weld',
   description:
-    'Jenkins Structural & Metalworks is an independent civil construction engineering and custom metal fabrication firm. Led personally on-site by Eng. Mark Jenkins, PE, we bridge the gap between structural design calculations and heavy field execution—eliminating subcontractor handoff failures and inconsistent workmanship.\n\nWith over 18 years of hands-on structural framing, foundation work, certified arc and TIG/MIG welding, and automated security gate commissioning, every beam, column, hinge pin, and perimeter anchor is built to verifiable engineering tolerances.',
+    'JOSTEC Construction provides civil building construction, certified arc and MIG/TIG welding, custom metal fabrication, permanent gate installation, and perimeter security systems for residential and commercial clients across Kenya.\n\nEvery build is overseen directly from site measurement and structural material selection through workshop fabrication, anti-corrosion priming, and permanent on-site anchoring—delivering reliable workmanship engineered for long-term field performance.',
   avatarUrl: '',
   avatarStoragePath: 'default',
+  companyName: COMPANY_INFO.name,
+  phoneDisplay: '',
+  whatsappNumber: '',
+  contactEmail: '',
+  workshopAddress: '',
+  cityRegion: COMPANY_INFO.cityRegion,
+  operatingHours: '',
 };
 
 export const SITE_IMAGE_SLOTS = [

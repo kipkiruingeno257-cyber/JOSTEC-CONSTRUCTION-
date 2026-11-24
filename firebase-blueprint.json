@@ -292,6 +292,48 @@
           "minLength": 0,
           "maxLength": 512
         },
+        "companyName": {
+          "type": "string",
+          "description": "Optional public business display name.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "phoneDisplay": {
+          "type": "string",
+          "description": "Optional verified telephone number displayed on the public site.",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "whatsappNumber": {
+          "type": "string",
+          "description": "Optional WhatsApp digits for direct chat link.",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "contactEmail": {
+          "type": "string",
+          "description": "Optional public business inquiry email address.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "workshopAddress": {
+          "type": "string",
+          "description": "Optional genuine physical workshop or office street address.",
+          "minLength": 0,
+          "maxLength": 200
+        },
+        "cityRegion": {
+          "type": "string",
+          "description": "Optional service region or county coverage in Kenya.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "operatingHours": {
+          "type": "string",
+          "description": "Optional workshop operating hours.",
+          "minLength": 0,
+          "maxLength": 80
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
