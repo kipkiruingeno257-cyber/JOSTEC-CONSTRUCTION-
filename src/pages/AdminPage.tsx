@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  BellRing,
   Check,
   CheckCircle2,
   Copy,
@@ -33,6 +34,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { AccessSecurityPanel } from '../components/admin/AccessSecurityPanel';
 import { InquiriesManager } from '../components/admin/InquiriesManager';
+import { NotificationsPanel } from '../components/admin/NotificationsPanel';
 import { PhotoAppearanceStudioTab } from '../components/admin/PhotoAppearanceStudioTab';
 import { ProfileManagerPanel } from '../components/admin/ProfileManagerPanel';
 import { ProjectFormPanel } from '../components/admin/ProjectFormPanel';
@@ -45,6 +47,7 @@ import { activeFirebaseConfig } from '../lib/firebase';
 import {
   subscribeAllProjects,
   subscribeAllTestimonials,
+  subscribeEmailLogs,
   subscribeInquiries,
   subscribeSiteImages,
   subscribeSiteProfile,
@@ -54,6 +57,7 @@ import { getImageFilterCss, normalizePhotoAppearance } from '../utils/photoAppea
 import {
   BOOTSTRAPPED_ADMIN_EMAIL,
   COMPANY_INFO,
+  type EmailLogRecord,
   type InquiryRecord,
   type ProjectRecord,
   type SiteImageRecord,
@@ -71,6 +75,7 @@ type AdminTab =
   | 'appearance'
   | 'testimonials'
   | 'inquiries'
+  | 'notifications'
   | 'security'
   | 'setup';
 
@@ -142,6 +147,7 @@ export const AdminPage: React.FC = () => {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [testimonials, setTestimonials] = useState<TestimonialRecord[]>([]);
   const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
+  const [emailLogs, setEmailLogs] = useState<EmailLogRecord[]>([]);
   const [siteProfile, setSiteProfile] = useState<SiteProfileRecord | null>(null);
   const [siteImages, setSiteImages] = useState<Partial<Record<SiteImageSlotId, SiteImageRecord>>>({});
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -163,6 +169,7 @@ export const AdminPage: React.FC = () => {
       setProjects(data.projects);
       setTestimonials(data.testimonials);
       setInquiries(data.inquiries);
+      setEmailLogs(data.emailLogs ?? []);
       setSiteProfile(data.profile ?? null);
       setSiteImages(data.siteImages ?? {});
     } catch (err) {
@@ -175,6 +182,7 @@ export const AdminPage: React.FC = () => {
       const uidFilter = isBootstrappedAdmin ? undefined : user?.uid;
       const unsubProjects = subscribeAllProjects(setProjects, undefined, uidFilter);
       const unsubTestimonials = subscribeAllTestimonials(setTestimonials, undefined, uidFilter);
+      const unsubEmailLogs = subscribeEmailLogs(setEmailLogs, undefined, uidFilter);
       const unsubProfile = subscribeSiteProfile(setSiteProfile);
       const unsubSiteImages = subscribeSiteImages(setSiteImages);
       const unsubInquiries = isBootstrappedAdmin
@@ -184,6 +192,7 @@ export const AdminPage: React.FC = () => {
       return () => {
         unsubProjects();
         unsubTestimonials();
+        unsubEmailLogs();
         unsubProfile();
         unsubSiteImages();
         unsubInquiries();
@@ -198,6 +207,7 @@ export const AdminPage: React.FC = () => {
     setProjects([]);
     setTestimonials([]);
     setInquiries([]);
+    setEmailLogs([]);
     setSiteProfile(null);
     setSiteImages({});
   }, [activeAdminMode, isBootstrappedAdmin, user?.uid, refreshLocalData]);
@@ -769,6 +779,7 @@ export const AdminPage: React.FC = () => {
     { id: 'appearance', label: 'Photo Appearance', icon: SlidersHorizontal },
     { id: 'testimonials', label: 'Testimonials', icon: MessageSquareQuote },
     { id: 'inquiries', label: 'Client Inquiries', icon: Mail, badge: stats.newInquiriesCount },
+    { id: 'notifications', label: 'Email Notifications', icon: BellRing },
     { id: 'security', label: 'Access & Security', icon: ShieldCheck },
     { id: 'setup', label: 'Setup & Rules', icon: Settings },
   ];
@@ -1263,6 +1274,17 @@ export const AdminPage: React.FC = () => {
             <InquiriesManager
               mode={activeAdminMode}
               inquiries={inquiries}
+              onNotify={notify}
+              onLocalMutated={refreshLocalData}
+              onOpenNotifications={() => setActiveTab('notifications')}
+            />
+          )}
+
+          {/* Email Notifications Tab */}
+          {activeTab === 'notifications' && (
+            <NotificationsPanel
+              mode={activeAdminMode}
+              emailLogs={emailLogs}
               onNotify={notify}
               onLocalMutated={refreshLocalData}
             />

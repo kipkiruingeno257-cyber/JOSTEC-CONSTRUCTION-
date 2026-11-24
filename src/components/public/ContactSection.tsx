@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
   Clock,
   FileText,
@@ -14,7 +15,14 @@ import { useSiteProfile } from '../../hooks/useSiteProfile';
 import { isFirebaseConfigured } from '../../lib/firebase';
 import { submitPublicInquiry } from '../../services/firestoreService';
 import { submitLocalInquiry } from '../../services/localMediaService';
-import { COMPANY_INFO, PROJECT_CATEGORIES, SCHEMA_LIMITS, type ProjectCategory } from '../../types';
+import { notifyInquiryEmail } from '../../services/notificationService';
+import {
+  COMPANY_INFO,
+  PROJECT_CATEGORIES,
+  SCHEMA_LIMITS,
+  type EmailDispatchResponse,
+  type ProjectCategory,
+} from '../../types';
 
 export interface QuotePrefillRequest {
   service: ProjectCategory;
@@ -26,6 +34,21 @@ interface ContactSectionProps {
   preselectedService?: ProjectCategory | '';
   prefillRequest?: QuotePrefillRequest | null;
 }
+
+interface SubmitBannerState {
+  tone: 'success' | 'warning';
+  title: string;
+  body: string;
+}
+
+function createSubmissionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `sub_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const CLIENT_COOLDOWN_MS = 30_000;
 
 export const ContactSection: React.FC<ContactSectionProps> = ({
   preselectedService = '',
@@ -40,9 +63,13 @@ export const ContactSection: React.FC<ContactSectionProps> = ({
     preselectedService || 'Building Construction'
   );
   const [message, setMessage] = useState('');
+  const [honeypot, setHoneypot] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitBanner, setSubmitBanner] = useState<SubmitBannerState | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const submissionIdRef = useRef<string>(createSubmissionId());
+  const lastSubmittedAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (preselectedService) {
@@ -60,7 +87,9 @@ export const ContactSection: React.FC<ContactSectionProps> = ({
           : `${prefillRequest.scopeText}\n\n${prev}`
       );
     }
-    setSubmitSuccess(false);
+    setSubmitBanner(null);
+    setSubmitError(null);
+    submissionIdRef.current = createSubmissionId();
   }, [prefillRequest]);
 
   const brandName = profile.companyName?.trim() || COMPANY_INFO.name;
@@ -82,32 +111,131 @@ export const ContactSection: React.FC<ContactSectionProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+
+    const cleanName = name.trim();
+    const cleanPhone = phone.trim();
+    const cleanEmail = email.trim();
+    const cleanMessage = message.trim();
+    const phoneDigits = cleanPhone.replace(/[^0-9]/g, '');
+
+    if (cleanName.length < SCHEMA_LIMITS.inquiry.nameMin) {
+      setSubmitError('Please enter your full name (at least 2 characters).');
+      return;
+    }
+    if (phoneDigits.length < SCHEMA_LIMITS.inquiry.phoneMin || cleanPhone.length > SCHEMA_LIMITS.inquiry.phoneMax) {
+      setSubmitError('Please enter a valid phone or WhatsApp number (at least 6 digits).');
+      return;
+    }
+    if (!/^[^\s@<>()[\],;:]+@[^\s@<>()[\],;:]+\.[^\s@<>()[\],;:]{2,}$/.test(cleanEmail)) {
+      setSubmitError('Please enter a valid email address so we can send your confirmation.');
+      return;
+    }
+    if (cleanMessage.length < SCHEMA_LIMITS.inquiry.messageMin) {
+      setSubmitError(
+        `Please describe your project scope and location in at least ${SCHEMA_LIMITS.inquiry.messageMin} characters.`
+      );
+      return;
+    }
+
+    const now = Date.now();
+    const remainingCooldownMs = CLIENT_COOLDOWN_MS - (now - lastSubmittedAtRef.current);
+    if (remainingCooldownMs > 0) {
+      const waitSecs = Math.ceil(remainingCooldownMs / 1000);
+      setSubmitError(
+        `Your previous inquiry was just submitted. Please wait ${waitSecs} second(s) before sending another request.`
+      );
+      return;
+    }
+
     setSubmitting(true);
     setSubmitError(null);
-    setSubmitSuccess(false);
+    setSubmitBanner(null);
 
     try {
       const inquiryData = {
-        name,
-        phone,
-        email,
+        name: cleanName,
+        phone: cleanPhone,
+        email: cleanEmail,
         serviceType,
-        message,
+        message: cleanMessage,
       };
+      const submissionId = submissionIdRef.current;
+      let emailResult: EmailDispatchResponse | undefined;
+
       if (isFirebaseConfigured) {
         try {
-          await submitPublicInquiry(inquiryData);
+          const inquiryId = await submitPublicInquiry(inquiryData);
+          emailResult = await notifyInquiryEmail({
+            inquiryId,
+            submissionId,
+            ...inquiryData,
+            website: honeypot || undefined,
+          });
         } catch {
-          await submitLocalInquiry(inquiryData);
+          const localRes = await submitLocalInquiry({
+            ...inquiryData,
+            submissionId,
+            website: honeypot || undefined,
+          });
+          emailResult = localRes?.emailNotification;
         }
       } else {
-        await submitLocalInquiry(inquiryData);
+        const localRes = await submitLocalInquiry({
+          ...inquiryData,
+          submissionId,
+          website: honeypot || undefined,
+        });
+        emailResult = localRes?.emailNotification;
       }
-      setSubmitSuccess(true);
+
+      lastSubmittedAtRef.current = Date.now();
+      submissionIdRef.current = createSubmissionId();
+
+      if (emailResult?.duplicate) {
+        setSubmitBanner({
+          tone: 'success',
+          title: 'Inquiry already logged.',
+          body: `Your project request for ${brandName} was already received and delivered. No duplicate email was sent.`,
+        });
+      } else if (emailResult?.skippedSpam) {
+        setSubmitBanner({
+          tone: 'success',
+          title: 'Inquiry received.',
+          body: `Your project details have been logged for ${brandName}.`,
+        });
+      } else if (emailResult?.ok && emailResult.clientEmail?.ok) {
+        setSubmitBanner({
+          tone: 'success',
+          title: 'Inquiry received & confirmation sent.',
+          body: `Your project request has been delivered to ${brandName}, and a confirmation email has been sent to ${cleanEmail}.`,
+        });
+      } else if (emailResult?.ok) {
+        const clientNote = emailResult.clientEmail?.detail
+          ? ` Confirmation email notice: ${emailResult.clientEmail.detail}`
+          : '';
+        setSubmitBanner({
+          tone: 'success',
+          title: 'Inquiry received.',
+          body: `Your project details have been logged and our team has been notified by email.${clientNote}`,
+        });
+      } else {
+        const deliveryDetail =
+          emailResult?.detail ||
+          emailResult?.error ||
+          'Automated email notification could not be sent right now.';
+        setSubmitBanner({
+          tone: 'warning',
+          title: 'Inquiry saved in project queue.',
+          body: `Your inquiry was recorded for ${brandName}, however automated email delivery reported an issue: ${deliveryDetail}`,
+        });
+      }
+
       setName('');
       setPhone('');
       setEmail('');
       setMessage('');
+      setHoneypot('');
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Unable to send your request.');
     } finally {
@@ -141,26 +269,59 @@ export const ContactSection: React.FC<ContactSectionProps> = ({
               Project Specification &amp; Inquiry Form
             </h3>
 
-            {submitSuccess && (
-              <div className="mb-6 p-4 rounded-md bg-emerald-50 border border-emerald-200 flex items-start gap-3 text-emerald-900">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            {submitBanner && (
+              <div
+                role="status"
+                className={`mb-6 p-4 rounded-md border flex items-start gap-3 ${
+                  submitBanner.tone === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-amber-50 border-amber-200 text-amber-950'
+                }`}
+              >
+                {submitBanner.tone === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                )}
                 <div className="text-sm">
-                  <p className="font-semibold">Inquiry received.</p>
-                  <p className="text-emerald-800 mt-0.5">
-                    Your project details have been logged for {brandName}. We will review your scope
-                    and follow up directly.
+                  <p className="font-semibold">{submitBanner.title}</p>
+                  <p
+                    className={`mt-0.5 ${
+                      submitBanner.tone === 'success' ? 'text-emerald-800' : 'text-amber-900'
+                    }`}
+                  >
+                    {submitBanner.body}
                   </p>
                 </div>
               </div>
             )}
 
             {submitError && (
-              <div className="mb-6 p-4 rounded-md bg-red-50 border border-red-200 text-sm text-red-800">
+              <div
+                role="alert"
+                className="mb-6 p-4 rounded-md bg-red-50 border border-red-200 text-sm text-red-800"
+              >
                 {submitError}
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Automated bot trap (hidden from real visitors and screen readers) */}
+              <div
+                aria-hidden="true"
+                className="absolute -left-[9999px] w-px h-px overflow-hidden opacity-0 pointer-events-none"
+              >
+                <label htmlFor="contact-website">Leave this field empty</label>
+                <input
+                  id="contact-website"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
                   <label

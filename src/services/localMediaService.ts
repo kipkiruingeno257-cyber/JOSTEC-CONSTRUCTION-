@@ -5,6 +5,8 @@ import {
   broadcastSiteProfileChange,
 } from '../utils/siteContentSync';
 import type {
+  EmailDispatchResponse,
+  EmailLogRecord,
   InquiryRecord,
   InquiryStatus,
   PhotoAppearance,
@@ -30,6 +32,10 @@ export interface MediaUploadOutput {
 
 // In-memory session token (never persisted to localStorage/sessionStorage)
 let localSessionToken: string | null = null;
+
+export async function getAdminRequestHeaders(): Promise<Record<string, string>> {
+  return getAuthHeaders();
+}
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
@@ -382,6 +388,7 @@ export async function fetchLocalAdminData(): Promise<{
   projects: ProjectRecord[];
   testimonials: TestimonialRecord[];
   inquiries: InquiryRecord[];
+  emailLogs: EmailLogRecord[];
   profile: SiteProfileRecord | null;
   siteImages: Partial<Record<SiteImageSlotId, SiteImageRecord>>;
 }> {
@@ -398,6 +405,7 @@ export async function fetchLocalAdminData(): Promise<{
     projects: ProjectRecord[];
     testimonials: TestimonialRecord[];
     inquiries: InquiryRecord[];
+    emailLogs: EmailLogRecord[];
     profile: SiteProfileRecord | null;
     siteImages: Partial<Record<SiteImageSlotId, SiteImageRecord>>;
   }>;
@@ -405,6 +413,7 @@ export async function fetchLocalAdminData(): Promise<{
     projects: Array.isArray(parsed.projects) ? parsed.projects : [],
     testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
     inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
+    emailLogs: Array.isArray(parsed.emailLogs) ? parsed.emailLogs : [],
     profile: parsed.profile ?? null,
     siteImages: parsed.siteImages ?? {},
   };
@@ -530,13 +539,20 @@ export async function deleteLocalTestimonial(id: string): Promise<void> {
   invalidateLocalPortfolioCache();
 }
 
+export interface LocalInquirySubmissionResult extends InquiryRecord {
+  ok?: boolean;
+  emailNotification?: EmailDispatchResponse;
+}
+
 export async function submitLocalInquiry(payload: {
   name: string;
   phone: string;
   email: string;
   serviceType: string;
   message: string;
-}): Promise<void> {
+  website?: string;
+  submissionId?: string;
+}): Promise<LocalInquirySubmissionResult | null> {
   const res = await fetch('/api/local/inquiries', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -546,6 +562,7 @@ export async function submitLocalInquiry(payload: {
     const b = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(b.error || 'Failed to submit inquiry.');
   }
+  return (await res.json().catch(() => null)) as LocalInquirySubmissionResult | null;
 }
 
 export async function updateLocalInquiryStatus(id: string, status: InquiryStatus): Promise<void> {

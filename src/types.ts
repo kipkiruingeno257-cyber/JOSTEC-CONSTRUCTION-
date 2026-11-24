@@ -17,6 +17,34 @@ export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
 export type ProjectStatus = 'draft' | 'published';
 export type TestimonialStatus = 'published' | 'hidden';
 export type InquiryStatus = 'new' | 'reviewed' | 'archived';
+export type EmailDeliveryStatus = 'sent' | 'not_configured' | 'failed';
+export type EmailProviderKind = 'resend' | 'smtp' | 'none';
+export type EmailLogKind = 'inquiry_alert' | 'client_reply' | 'test_email';
+
+export interface EmailSubResult {
+  ok: boolean;
+  status: EmailDeliveryStatus;
+  provider: EmailProviderKind;
+  recipient: string;
+  subject: string;
+  detail: string;
+  messageId?: string;
+}
+
+export interface EmailDispatchResponse {
+  ok: boolean;
+  duplicate?: boolean;
+  skippedSpam?: boolean;
+  status: EmailDeliveryStatus | 'rate_limited';
+  provider: EmailProviderKind;
+  recipient?: string;
+  subject?: string;
+  detail: string;
+  error?: string;
+  adminEmail?: EmailSubResult;
+  clientEmail?: EmailSubResult;
+  httpStatus?: number;
+}
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'kipkiruingeno257@gmail.com';
 
@@ -92,6 +120,14 @@ export const SCHEMA_LIMITS = {
     storagePathMax: 512,
     captionMax: 160,
   },
+  emailLog: {
+    recipientMin: 5,
+    recipientMax: 120,
+    subjectMin: 2,
+    subjectMax: 180,
+    detailMax: 300,
+    inquiryIdMax: 128,
+  },
 } as const;
 
 export type PhotoAspectRatio = '4/3' | '16/9' | '1/1' | '3/4';
@@ -165,10 +201,26 @@ export interface InquiryRecord {
   serviceType: string;
   message: string;
   status: InquiryStatus;
+  emailStatus?: EmailDeliveryStatus;
+  emailDetail?: string;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
   createdAtMs?: number;
   updatedAtMs?: number;
+}
+
+export interface EmailLogRecord {
+  id: string;
+  kind: EmailLogKind;
+  recipient: string;
+  subject: string;
+  status: EmailDeliveryStatus;
+  provider: EmailProviderKind;
+  detail?: string;
+  inquiryId?: string;
+  authorId?: string;
+  createdAt?: Timestamp | null;
+  createdAtMs?: number;
 }
 
 export interface AdminUserRecord {

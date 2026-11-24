@@ -35,6 +35,10 @@ import {
   SCHEMA_LIMITS,
   SITE_IMAGE_SLOTS,
   type AdminUserRecord,
+  type EmailDeliveryStatus,
+  type EmailLogKind,
+  type EmailLogRecord,
+  type EmailProviderKind,
   type InquiryRecord,
   type InquiryStatus,
   type PhotoAppearance,
@@ -1067,6 +1071,93 @@ export async function deleteSiteImage(
     }
     await deleteDoc(doc(db, 'site_images', slot));
     broadcastSiteImageChange(slot, null);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, docPath);
+  }
+}
+
+// --- Admin Email Delivery Logs (/email_logs/{logId}) ---
+
+export function subscribeEmailLogs(
+  onData: (logs: EmailLogRecord[]) => void,
+  onError?: (err: Error) => void,
+  authorUidFilter?: string
+): Unsubscribe {
+  if (!isFirebaseConfigured || !db) {
+    onData([]);
+    return () => {};
+  }
+  const path = 'email_logs';
+  const target = authorUidFilter
+    ? query(collection(db, path), where('authorId', '==', authorUidFilter))
+    : collection(db, path);
+  return onSnapshot(
+    target,
+    (snapshot) => {
+      const records = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<EmailLogRecord, 'id'>),
+      }));
+      onData(sortByCreatedAtDesc(records));
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
+      }
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
+}
+
+export async function createEmailLog(input: {
+  kind: EmailLogKind;
+  recipient: string;
+  subject: string;
+  status: EmailDeliveryStatus;
+  provider: EmailProviderKind;
+  detail?: string;
+  inquiryId?: string;
+}): Promise<string | null> {
+  const currentUser = auth?.currentUser;
+  if (!isFirebaseConfigured || !db || !currentUser) {
+    return null;
+  }
+  const recipient = input.recipient.trim().slice(0, SCHEMA_LIMITS.emailLog.recipientMax);
+  const subject = input.subject.trim().slice(0, SCHEMA_LIMITS.emailLog.subjectMax);
+  const detail = (input.detail ?? '').trim().slice(0, SCHEMA_LIMITS.emailLog.detailMax);
+  const inquiryId = (input.inquiryId ?? '').trim().slice(0, SCHEMA_LIMITS.emailLog.inquiryIdMax);
+
+  if (
+    recipient.length < SCHEMA_LIMITS.emailLog.recipientMin ||
+    subject.length < SCHEMA_LIMITS.emailLog.subjectMin
+  ) {
+    return null;
+  }
+
+  const id = generateSafeId('eml');
+  const docPath = `email_logs/${id}`;
+  try {
+    await setDoc(doc(db, 'email_logs', id), {
+      kind: input.kind,
+      recipient,
+      subject,
+      status: input.status,
+      provider: input.provider,
+      detail,
+      inquiryId,
+      authorId: currentUser.uid,
+      createdAt: serverTimestamp(),
+    });
+    return id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, docPath);
+  }
+}
+
+export async function deleteEmailLog(id: string): Promise<void> {
+  const docPath = `email_logs/${id}`;
+  try {
+    await deleteDoc(doc(db, 'email_logs', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, docPath);
   }

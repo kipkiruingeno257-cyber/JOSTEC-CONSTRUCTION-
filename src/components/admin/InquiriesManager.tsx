@@ -1,8 +1,26 @@
 import React, { useMemo, useState } from 'react';
-import { Archive, CheckCircle2, Clock, Download, Mail, Phone, Search, Trash2 } from 'lucide-react';
+import {
+  Archive,
+  CheckCircle2,
+  Clock,
+  Download,
+  ExternalLink,
+  Mail,
+  Phone,
+  Reply,
+  Search,
+  Send,
+  Trash2,
+  X,
+} from 'lucide-react';
 import type { AdminSessionMode } from '../../context/FirebaseContext';
-import { deleteInquiry, updateInquiryStatus } from '../../services/firestoreService';
+import {
+  createEmailLog,
+  deleteInquiry,
+  updateInquiryStatus,
+} from '../../services/firestoreService';
 import { deleteLocalInquiry, updateLocalInquiryStatus } from '../../services/localMediaService';
+import { sendAdminClientReply } from '../../services/notificationService';
 import type { InquiryRecord, InquiryStatus } from '../../types';
 
 interface InquiriesManagerProps {
@@ -10,6 +28,7 @@ interface InquiriesManagerProps {
   inquiries: InquiryRecord[];
   onNotify: (type: 'success' | 'error', text: string) => void;
   onLocalMutated?: () => Promise<void> | void;
+  onOpenNotifications?: () => void;
 }
 
 function escapeCsvCell(value: string): string {
@@ -22,10 +41,15 @@ export const InquiriesManager: React.FC<InquiriesManagerProps> = ({
   inquiries,
   onNotify,
   onLocalMutated,
+  onOpenNotifications,
 }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | InquiryStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
+  const [replySubject, setReplySubject] = useState('');
+  const [replyBody, setReplyBody] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
 
   const filteredInquiries = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -69,6 +93,61 @@ export const InquiriesManager: React.FC<InquiriesManagerProps> = ({
       onNotify('success', 'Inquiry deleted.');
     } catch (err) {
       onNotify('error', err instanceof Error ? err.message : 'Unable to delete inquiry.');
+    }
+  };
+
+  const openReplyComposer = (inq: InquiryRecord) => {
+    setReplyTargetId(inq.id);
+    setReplySubject(`Re: Your ${inq.serviceType} Inquiry — JOSTEC Construction`);
+    setReplyBody(
+      `Thank you for contacting JOSTEC Construction regarding your ${inq.serviceType} project.\n\nWe have reviewed your details and would like to schedule a site measurement / share an estimate.`
+    );
+  };
+
+  const handleSendReply = async (e: React.FormEvent, inq: InquiryRecord) => {
+    e.preventDefault();
+    setSendingReply(true);
+    try {
+      const res = await sendAdminClientReply({
+        to: inq.email,
+        clientName: inq.name,
+        serviceType: inq.serviceType,
+        subject: replySubject,
+        message: replyBody,
+        inquiryId: inq.id,
+      });
+
+      if (mode === 'firebase') {
+        await createEmailLog({
+          kind: 'client_reply',
+          recipient: inq.email,
+          subject: replySubject,
+          status: res.status === 'sent' ? 'sent' : res.status === 'not_configured' ? 'not_configured' : 'failed',
+          provider: res.provider,
+          detail: res.detail,
+          inquiryId: inq.id,
+        }).catch(() => {});
+      }
+
+      if (res.ok) {
+        if (inq.status === 'new') {
+          if (mode === 'local') {
+            await updateLocalInquiryStatus(inq.id, 'reviewed');
+          } else {
+            await updateInquiryStatus(inq.id, 'reviewed');
+          }
+        }
+        await onLocalMutated?.();
+        setReplyTargetId(null);
+        onNotify('success', `Email reply sent to ${inq.email}.`);
+      } else {
+        await onLocalMutated?.();
+        onNotify('error', res.detail || 'Could not send email reply via server.');
+      }
+    } catch (err) {
+      onNotify('error', err instanceof Error ? err.message : 'Unable to send reply email.');
+    } finally {
+      setSendingReply(false);
     }
   };
 
@@ -230,6 +309,34 @@ export const InquiriesManager: React.FC<InquiriesManagerProps> = ({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {inq.emailStatus && (
+                      <span
+                        title={inq.emailDetail || ''}
+                        className={`text-[11px] font-medium mr-1 ${
+                          inq.emailStatus === 'sent'
+                            ? 'text-emerald-700'
+                            : inq.emailStatus === 'not_configured'
+                              ? 'text-amber-700'
+                              : 'text-red-700'
+                        }`}
+                      >
+                        {inq.emailStatus === 'sent'
+                          ? 'Alert Emailed'
+                          : inq.emailStatus === 'not_configured'
+                            ? 'Email Setup Needed'
+                            : 'Alert Failed'}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        replyTargetId === inq.id ? setReplyTargetId(null) : openReplyComposer(inq)
+                      }
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#0B1B2B] text-white rounded-md hover:bg-slate-800 cursor-pointer"
+                    >
+                      <Reply className="w-3.5 h-3.5" />
+                      {replyTargetId === inq.id ? 'Close Reply' : 'Email Client'}
+                    </button>
                     {inq.status !== 'reviewed' && (
                       <button
                         type="button"
@@ -278,6 +385,83 @@ export const InquiriesManager: React.FC<InquiriesManagerProps> = ({
                     )}
                   </div>
                 </div>
+
+                {replyTargetId === inq.id && (
+                  <form
+                    onSubmit={(e) => handleSendReply(e, inq)}
+                    className="mt-4 pt-4 border-t border-slate-200 bg-slate-50 rounded-md p-4 space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-[#0B1B2B]">
+                        Send Email Reply to <span className="font-mono">{inq.email}</span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setReplyTargetId(null)}
+                        aria-label="Close reply composer"
+                        className="p-1 text-slate-500 hover:text-slate-800 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Subject
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        minLength={2}
+                        maxLength={180}
+                        value={replySubject}
+                        onChange={(e) => setReplySubject(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Message
+                      </label>
+                      <textarea
+                        required
+                        minLength={5}
+                        maxLength={4000}
+                        rows={4}
+                        value={replyBody}
+                        onChange={(e) => setReplyBody(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:border-orange-600"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-3 text-xs">
+                        <a
+                          href={`mailto:${encodeURIComponent(inq.email)}?subject=${encodeURIComponent(replySubject)}&body=${encodeURIComponent(replyBody)}`}
+                          className="inline-flex items-center gap-1 font-medium text-slate-600 hover:text-orange-600"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Open in Mail App
+                        </a>
+                        {onOpenNotifications && (
+                          <button
+                            type="button"
+                            onClick={onOpenNotifications}
+                            className="font-medium text-orange-600 hover:underline cursor-pointer"
+                          >
+                            Email Settings
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={sendingReply}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white text-xs font-semibold rounded-md hover:bg-orange-700 disabled:opacity-60 cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        {sendingReply ? 'Sending...' : 'Send Email Reply'}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             );
           })}

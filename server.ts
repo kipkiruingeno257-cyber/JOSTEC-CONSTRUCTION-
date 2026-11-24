@@ -3,6 +3,18 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { verifyFirebaseAdminBearer } from './api/_lib/auth.ts';
+import {
+  checkInquiryEmailRateLimit,
+  getEmailConfigStatus,
+  isValidEmailAddress,
+  isValidPhoneNumber,
+  sendClientReplyEmail,
+  sendInquiryWorkflowEmails,
+  sendTestNotificationEmail,
+  type EmailDeliveryStatus,
+  type EmailProviderKind,
+} from './api/_lib/mailer.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -118,8 +130,22 @@ interface LocalInquiry {
   serviceType: string;
   message: string;
   status: 'new' | 'reviewed' | 'archived';
+  emailStatus?: EmailDeliveryStatus;
+  emailDetail?: string;
   createdAtMs: number;
   updatedAtMs: number;
+}
+
+interface LocalEmailLog {
+  id: string;
+  kind: 'inquiry_alert' | 'client_reply' | 'test_email';
+  recipient: string;
+  subject: string;
+  status: EmailDeliveryStatus;
+  provider: EmailProviderKind;
+  detail?: string;
+  inquiryId?: string;
+  createdAtMs: number;
 }
 
 interface LocalSiteProfile {
@@ -159,6 +185,7 @@ interface LocalStore {
   projects: LocalProject[];
   testimonials: LocalTestimonial[];
   inquiries: LocalInquiry[];
+  emailLogs?: LocalEmailLog[];
   profile?: LocalSiteProfile | null;
   siteImages?: Partial<Record<LocalSiteImageSlot, LocalSiteImage>>;
 }
@@ -212,7 +239,7 @@ function readStore(): LocalStore {
   }
   try {
     if (!fs.existsSync(STORE_PATH)) {
-      cachedStore = { projects: [], testimonials: [], inquiries: [] };
+      cachedStore = { projects: [], testimonials: [], inquiries: [], emailLogs: [] };
       return cachedStore;
     }
     const raw = fs.readFileSync(STORE_PATH, 'utf8');
@@ -221,13 +248,21 @@ function readStore(): LocalStore {
       projects: Array.isArray(parsed.projects) ? parsed.projects : [],
       testimonials: Array.isArray(parsed.testimonials) ? parsed.testimonials : [],
       inquiries: Array.isArray(parsed.inquiries) ? parsed.inquiries : [],
+      emailLogs: Array.isArray(parsed.emailLogs) ? parsed.emailLogs : [],
       profile: parsed.profile && typeof parsed.profile === 'object' ? parsed.profile : null,
       siteImages:
         parsed.siteImages && typeof parsed.siteImages === 'object' ? parsed.siteImages : {},
     };
     return cachedStore;
   } catch {
-    cachedStore = { projects: [], testimonials: [], inquiries: [], profile: null, siteImages: {} };
+    cachedStore = {
+      projects: [],
+      testimonials: [],
+      inquiries: [],
+      emailLogs: [],
+      profile: null,
+      siteImages: {},
+    };
     return cachedStore;
   }
 }
@@ -366,29 +401,13 @@ function isSafeImageUrl(url: string): boolean {
 }
 
 async function verifyFirebaseAdminToken(idToken: string): Promise<boolean> {
-  if (!idToken || !FIREBASE_API_KEY) return false;
-  try {
-    const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIREBASE_API_KEY)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      }
-    );
-    if (!res.ok) return false;
-    const data = (await res.json()) as {
-      users?: Array<{ email?: string; emailVerified?: boolean }>;
-    };
-    const user = data.users?.[0];
-    return Boolean(
-      user &&
-        user.emailVerified === true &&
-        user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()
-    );
-  } catch {
-    return false;
+  if (!idToken) return false;
+  if (!FIREBASE_API_KEY) {
+    const res = await verifyFirebaseAdminBearer(idToken);
+    return res.authorized;
   }
+  const res = await verifyFirebaseAdminBearer(idToken);
+  return res.authorized;
 }
 
 async function isAuthorizedRequest(req: express.Request): Promise<boolean> {
@@ -459,6 +478,181 @@ async function startServer() {
   });
 
   app.use('/api/local', express.json({ limit: '1mb' }));
+  app.use('/api/notify-inquiry', express.json({ limit: '64kb' }));
+  app.use('/api/notifications', express.json({ limit: '64kb' }));
+
+  // --- Email Notification Endpoints (Shared Behavior with Vercel /api/*) ---
+  app.post('/api/notify-inquiry', async (req, res) => {
+    const clientIp = getClientKey(req);
+    const rate = checkInquiryEmailRateLimit(clientIp);
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      res.status(429).json({
+        ok: false,
+        status: 'rate_limited',
+        error: `Too many quote requests from this connection. Please wait ${Math.ceil(rate.retryAfterSeconds / 60)} minute(s) before trying again.`,
+      });
+      return;
+    }
+
+    const b = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+    const name = String(b.name || '').trim();
+    const phone = String(b.phone || '').trim();
+    const email = String(b.email || '').trim();
+    const serviceType = String(b.serviceType || 'Project Inquiry').trim();
+    const message = String(b.message || '').trim();
+    const inquiryId = typeof b.inquiryId === 'string' ? b.inquiryId.trim() : undefined;
+    const submissionId = typeof b.submissionId === 'string' ? b.submissionId.trim() : undefined;
+    const website = typeof b.website === 'string' ? b.website : undefined;
+
+    if (name.length < 2 || name.length > 100) {
+      res.status(400).json({ error: 'Please enter your full name (2–100 characters).' });
+      return;
+    }
+    if (!isValidPhoneNumber(phone)) {
+      res.status(400).json({ error: 'Please enter a valid phone or WhatsApp number.' });
+      return;
+    }
+    if (!isValidEmailAddress(email)) {
+      res.status(400).json({ error: 'Please enter a valid email address.' });
+      return;
+    }
+    if (message.length < 10 || message.length > 2000) {
+      res.status(400).json({ error: 'Please describe your project scope in 10–2000 characters.' });
+      return;
+    }
+
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+      .split(',')[0]
+      .trim();
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http')
+      .split(',')[0]
+      .trim();
+    const siteOrigin = host && proto === 'https' ? `https://${host}` : undefined;
+
+    const result = await sendInquiryWorkflowEmails({
+      inquiryId,
+      submissionId,
+      name,
+      phone,
+      email,
+      serviceType,
+      message,
+      website,
+      siteOrigin,
+    });
+
+    const httpStatus = result.ok ? 200 : result.status === 'not_configured' ? 503 : 502;
+    res.status(httpStatus).json({
+      ok: result.ok,
+      duplicate: Boolean(result.duplicate),
+      status: result.status,
+      provider: result.provider,
+      detail: result.detail,
+      adminEmail: result.adminEmail,
+      clientEmail: result.clientEmail,
+    });
+  });
+
+  app.get('/api/notifications/status', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Administrator authentication required.' });
+      return;
+    }
+    const status = getEmailConfigStatus();
+    const store = readStore();
+    res.json({
+      configured: status.configured,
+      provider: status.provider,
+      recipientMasked: status.recipientMasked,
+      notificationToEnvConfigured: status.notificationToEnvConfigured,
+      fromAddress: status.fromAddress,
+      usingResendSandbox: status.usingResendSandbox,
+      smtpHost: status.smtpHost,
+      localLogs: (store.emailLogs ?? []).slice(0, 30),
+    });
+  });
+
+  app.post('/api/notifications/test', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Administrator authentication required.' });
+      return;
+    }
+    const b = (req.body && typeof req.body === 'object' ? req.body : {}) as {
+      recipientEmail?: string;
+    };
+    const requestedRecipient =
+      typeof b.recipientEmail === 'string' ? b.recipientEmail.trim() : '';
+    if (requestedRecipient && !isValidEmailAddress(requestedRecipient)) {
+      res.status(400).json({ error: 'Please enter a valid recipient email address.' });
+      return;
+    }
+
+    const result = await sendTestNotificationEmail(requestedRecipient || undefined);
+    const store = readStore();
+    const logEntry: LocalEmailLog = {
+      id: `local_eml_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      kind: 'test_email',
+      recipient: result.recipient,
+      subject: result.subject,
+      status: result.status,
+      provider: result.provider,
+      detail: result.detail.slice(0, 300),
+      createdAtMs: Date.now(),
+    };
+    store.emailLogs = [logEntry, ...(store.emailLogs ?? [])].slice(0, 100);
+    writeStore(store);
+
+    res.status(result.ok ? 200 : result.status === 'not_configured' ? 400 : 502).json({
+      ok: result.ok,
+      status: result.status,
+      provider: result.provider,
+      recipient: result.recipient,
+      subject: result.subject,
+      detail: result.detail,
+    });
+  });
+
+  app.post('/api/notifications/reply', async (req, res) => {
+    if (!(await isAuthorizedRequest(req))) {
+      res.status(401).json({ error: 'Administrator authentication required.' });
+      return;
+    }
+    const b = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+    const inquiryId = typeof b.inquiryId === 'string' ? b.inquiryId.trim() : undefined;
+    const result = await sendClientReplyEmail({
+      to: String(b.to || ''),
+      clientName: String(b.clientName || 'Client'),
+      serviceType: String(b.serviceType || 'Project Inquiry'),
+      subject: String(b.subject || ''),
+      message: String(b.message || ''),
+      inquiryId,
+    });
+
+    const store = readStore();
+    const logEntry: LocalEmailLog = {
+      id: `local_eml_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      kind: 'client_reply',
+      recipient: result.recipient,
+      subject: result.subject,
+      status: result.status,
+      provider: result.provider,
+      detail: result.detail.slice(0, 300),
+      inquiryId,
+      createdAtMs: Date.now(),
+    };
+    store.emailLogs = [logEntry, ...(store.emailLogs ?? [])].slice(0, 100);
+    writeStore(store);
+
+    res.status(result.ok ? 200 : result.status === 'not_configured' ? 400 : 502).json({
+      ok: result.ok,
+      status: result.status,
+      provider: result.provider,
+      recipient: result.recipient,
+      subject: result.subject,
+      detail: result.detail,
+    });
+  });
 
   // --- Media Upload (Direct Server Storage - Zero Firebase Storage Required) ---
   app.post(
@@ -787,16 +981,38 @@ async function startServer() {
     });
   });
 
-  app.post('/api/local/inquiries', (req, res) => {
-    const b = req.body as Partial<LocalInquiry>;
+  app.post('/api/local/inquiries', async (req, res) => {
+    const b = req.body as Partial<LocalInquiry> & { website?: string; submissionId?: string };
+    // Honeypot silent drop
+    if (b.website && String(b.website).trim().length > 0) {
+      res.status(202).json({ ok: true });
+      return;
+    }
+
     const name = String(b.name || '').trim().slice(0, 100);
     const phone = String(b.phone || '').trim().slice(0, 30);
     const email = String(b.email || '').trim().slice(0, 120);
     const serviceType = String(b.serviceType || 'General Inquiry').trim().slice(0, 80);
     const message = String(b.message || '').trim().slice(0, 2000);
+    const submissionId = typeof b.submissionId === 'string' ? b.submissionId.trim() : undefined;
 
-    if (name.length < 2 || phone.length < 6 || !email.includes('@') || message.length < 10) {
+    if (
+      name.length < 2 ||
+      !isValidPhoneNumber(phone) ||
+      !isValidEmailAddress(email) ||
+      message.length < 10
+    ) {
       res.status(400).json({ error: 'Please complete all required inquiry fields.' });
+      return;
+    }
+
+    const clientIp = getClientKey(req);
+    const rate = checkInquiryEmailRateLimit(clientIp);
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(rate.retryAfterSeconds));
+      res.status(429).json({
+        error: `Too many quote requests from this connection. Please wait ${Math.ceil(rate.retryAfterSeconds / 60)} minute(s) before trying again.`,
+      });
       return;
     }
 
@@ -813,9 +1029,56 @@ async function startServer() {
       createdAtMs: now,
       updatedAtMs: now,
     };
+
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+      .split(',')[0]
+      .trim();
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http')
+      .split(',')[0]
+      .trim();
+    const siteOrigin = host && proto === 'https' ? `https://${host}` : undefined;
+
+    const workflow = await sendInquiryWorkflowEmails({
+      inquiryId: record.id,
+      submissionId,
+      name,
+      phone,
+      email,
+      serviceType,
+      message,
+      siteOrigin,
+    });
+
+    if (workflow.duplicate) {
+      res.status(200).json({
+        ...record,
+        emailNotification: workflow,
+      });
+      return;
+    }
+
+    record.emailStatus = workflow.adminEmail.status;
+    record.emailDetail = workflow.detail.slice(0, 300);
+
+    const logEntry: LocalEmailLog = {
+      id: `local_eml_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+      kind: 'inquiry_alert',
+      recipient: workflow.adminEmail.recipient,
+      subject: workflow.adminEmail.subject,
+      status: workflow.adminEmail.status,
+      provider: workflow.adminEmail.provider,
+      detail: workflow.detail.slice(0, 300),
+      inquiryId: record.id,
+      createdAtMs: Date.now(),
+    };
+    store.emailLogs = [logEntry, ...(store.emailLogs ?? [])].slice(0, 100);
+
     store.inquiries.unshift(record);
     writeStore(store);
-    res.status(201).json(record);
+    res.status(201).json({
+      ...record,
+      emailNotification: workflow,
+    });
   });
 
   app.get('/api/local/admin/data', async (req, res) => {
@@ -828,6 +1091,7 @@ async function startServer() {
       projects: [...store.projects].sort((a, b) => b.createdAtMs - a.createdAtMs),
       testimonials: [...store.testimonials].sort((a, b) => b.createdAtMs - a.createdAtMs),
       inquiries: [...store.inquiries].sort((a, b) => b.createdAtMs - a.createdAtMs),
+      emailLogs: [...(store.emailLogs ?? [])].sort((a, b) => b.createdAtMs - a.createdAtMs),
       profile: store.profile ?? null,
       siteImages: store.siteImages ?? {},
     });

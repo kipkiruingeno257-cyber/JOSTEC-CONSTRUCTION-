@@ -385,6 +385,65 @@
         }
       },
       "required": ["slot", "imageUrl", "storagePath", "updatedAt"]
+    },
+    "EmailLog": {
+      "title": "EmailLog",
+      "description": "Admin-only audit record for outbound email notifications and client replies.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Category of email dispatch.",
+          "enum": ["inquiry_alert", "client_reply", "test_email"]
+        },
+        "recipient": {
+          "type": "string",
+          "description": "Destination email address.",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "subject": {
+          "type": "string",
+          "description": "Email subject line.",
+          "minLength": 2,
+          "maxLength": 180
+        },
+        "status": {
+          "type": "string",
+          "description": "Delivery result.",
+          "enum": ["sent", "not_configured", "failed"]
+        },
+        "provider": {
+          "type": "string",
+          "description": "Transport provider used.",
+          "enum": ["resend", "smtp", "none"]
+        },
+        "detail": {
+          "type": "string",
+          "description": "Optional summary or delivery error note.",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "inquiryId": {
+          "type": "string",
+          "description": "Optional related inquiry document ID.",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "authorId": {
+          "type": "string",
+          "description": "UID of the administrator who triggered the log entry.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when logged."
+        }
+      },
+      "required": ["kind", "recipient", "subject", "status", "provider", "authorId", "createdAt"]
     }
   },
   "firestore": {
@@ -411,6 +470,10 @@
     "/site_images/{slotId}": {
       "schema": { "$ref": "#/entities/SiteImage" },
       "description": "Publicly readable admin-uploaded website showcase and hero photos keyed by fixed slot ID; admin-only write."
+    },
+    "/email_logs/{logId}": {
+      "schema": { "$ref": "#/entities/EmailLog" },
+      "description": "PII-isolated admin-only audit log for test notifications and client email replies."
     }
   }
 }

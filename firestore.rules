@@ -160,6 +160,18 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidEmailLog(data) {
+      return data.kind in ['inquiry_alert', 'client_reply', 'test_email'] &&
+        isValidString(data.recipient, 5, 120) &&
+        isValidString(data.subject, 2, 180) &&
+        data.status in ['sent', 'not_configured', 'failed'] &&
+        data.provider in ['resend', 'smtp', 'none'] &&
+        (!('detail' in data) || isValidString(data.detail, 0, 300)) &&
+        (!('inquiryId' in data) || isValidString(data.inquiryId, 0, 128)) &&
+        isValidId(data.authorId) &&
+        data.createdAt is timestamp;
+    }
+
     // --- Collection: projects ---
     match /projects/{projectId} {
       allow get: if isValidId(projectId) && (existing().status == 'published' || isAdmin());
@@ -321,6 +333,24 @@ service cloud.firestore {
         incoming().diff(existing()).affectedKeys().hasOnly(['imageUrl', 'storagePath', 'caption', 'updatedAt']);
 
       allow delete: if isVerifiedUser() && isValidId(slotId) && isValidSiteImageSlot(slotId) && isAdmin();
+    }
+
+    // --- Collection: email_logs (Admin-Only PII Audit Log) ---
+    match /email_logs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isBootstrappedAdmin() || (isVerifiedUser() && existing().authorId == request.auth.uid);
+
+      allow create: if isVerifiedUser() &&
+        isValidId(logId) &&
+        incoming().keys().hasAll(['kind', 'recipient', 'subject', 'status', 'provider', 'authorId', 'createdAt']) &&
+        incoming().keys().hasOnly(['kind', 'recipient', 'subject', 'status', 'provider', 'detail', 'inquiryId', 'authorId', 'createdAt']) &&
+        isValidEmailLog(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(logId) && isAdmin();
     }
   }
 }
